@@ -1,0 +1,3 @@
+[virtualenvs]
+create = true
+path = "{cache-dir}/virtualenvs"
