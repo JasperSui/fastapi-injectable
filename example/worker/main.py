@@ -114,3 +114,21 @@ if __name__ == "__main__":
 
     country_worker = CountryWorker()
     country_worker.process(messages)
+
+"""Example output:
+
+[CountryWorker] Processing message 1 of 2
+[CountryWorker] Message: Hello
+[Country] do_something for message: Hello
+[CountryWorker] post message cleanup called
+[Capital] cleanup called
+[Mayor] cleanup called
+------------------------------
+[CountryWorker] Processing message 2 of 2
+[CountryWorker] Message: World
+[Country] do_something for message: World
+[CountryWorker] post message cleanup called
+[Capital] cleanup called
+[Mayor] cleanup called
+------------------------------
+"""

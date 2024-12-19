@@ -86,13 +86,30 @@ Key features:
       return db.query()
 
   # Cleanup options
-  await cleanup_exit_stack_of_func(process_data)  # Cleanup specific function's resources
-  await cleanup_all_exit_stacks()  # Cleanup all resources
+  await cleanup_exit_stack_of_func(process_data)  # Option #1: Cleanup specific function's resources
+  await cleanup_all_exit_stacks()  # Option #2: Cleanup all resources
   ```
 
 - **Dependency Caching**: Optional caching of resolved dependencies for better performance
   ```python
+  from typing import Annotated
+
+  from fastapi import Depends
+
   from fastapi_injectable.decorator import injectable
+
+  class Mayor:
+      pass
+
+
+  class Capital:
+      def __init__(self, mayor: Mayor) -> None:
+          self.mayor = mayor
+
+
+  class Country:
+      def __init__(self, capital: Capital) -> None:
+          self.capital = capital
 
   def get_mayor() -> Mayor:
       return Mayor()
@@ -141,8 +158,19 @@ This package is particularly useful for:
 - [FastAPI Injectable](#fastapi-injectable)
    * [Overview](#overview)
    * [Quick Start](#quick-start)
+   * [Table of Content](#table-of-content)
    * [Requirements](#requirements)
    * [Installation](#installation)
+   * [Usage](#usage)
+      + [Basic Dependency Injection](#basic-dependency-injection)
+      + [Function-based Approach](#function-based-approach)
+      + [Generator Dependencies with Cleanup](#generator-dependencies-with-cleanup)
+      + [Async Support](#async-support)
+      + [Dependency Caching Control](#dependency-caching-control)
+      + [Graceful Shutdown](#graceful-shutdown)
+   * [Advanced Scenarios](#advanced-scenarios)
+      + [1. `test_injectable.py` - Shows all possible combinations of:](#1-test_injectablepy-shows-all-possible-combinations-of)
+      + [2. `test_integration.py` - Demonstrates:](#2-test_integrationpy-demonstrates)
    * [Real-world Examples](#real-world-examples)
       + [1. Using `Depends` in in-house background worker](#1-using-depends-in-in-house-background-worker)
    * [Contributing](#contributing)
@@ -164,13 +192,262 @@ You can install `fastapi-injectable` via [pip] from [PyPI]:
 $ pip install fastapi-injectable
 ```
 
+## Usage
+
+`fastapi-injectable` provides several powerful ways to use FastAPI's dependency injection outside of route handlers. Let's explore the key usage patterns with practical examples.
+
+### Basic Dependency Injection
+
+The most basic way to use dependency injection is through the `@injectable` decorator. This allows you to use FastAPI's `Depends` in any function, not just route handlers.
+
+Here's a simple example:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi_injectable.decorator import injectable
+
+class Database:
+    def __init__(self) -> None:
+        pass
+
+    def query(self) -> str:
+        return "data"
+
+# Define your dependencies
+def get_database():
+    return Database()
+
+# Use dependencies in any function
+@injectable
+def process_data(db: Annotated[Database, Depends(get_database)]):
+    return db.query()
+
+# Call it like a normal function
+result = process_data()
+print(result) # Output: 'data'
+```
+
+### Function-based Approach
+
+The function-based approach provides an alternative way to use dependency injection without decorators. This can be useful when you need more flexibility or want to avoid modifying the original function.
+
+Here's how to use it:
+
+
+```python
+from fastapi_injectable.util import get_injected_obj
+
+class Database:
+    def __init__(self) -> None:
+        pass
+
+    def query(self) -> str:
+        return "data"
+
+def process_data(db: Annotated[Database, Depends(get_database)]):
+    return db.query()
+
+# Get injected instance without decorator
+result = get_injected_obj(process_data)
+print(result) # Output: 'data'
+```
+
+### Generator Dependencies with Cleanup
+
+When working with generator dependencies that require cleanup (like database connections or file handles), `fastapi-injectable` provides built-in support for controlling dependency lifecycles and proper resource management by using cleanup functions.
+
+Here's an example showing how to work with generator dependencies:
+
+```python
+from collections.abc import Generator
+
+from fastapi_injectable.util import cleanup_all_exit_stacks, cleanup_exit_stack_of_func
+
+class Database:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def query(self) -> str:
+        return "data"
+
+    def close(self) -> None:
+        self.closed = True
+
+class Machine:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+def get_database() -> Generator[Database, None, None]:
+    db = Database()
+    yield db
+    db.close()
+
+@injectable
+def get_machine(db: Annotated[Database, Depends(get_database)]):
+    machine = Machine(db)
+    return machine
+
+# Use the function
+machine = get_machine()
+
+# Option #1: Cleanup when done for a single decorated function
+assert machine.db.closed is False
+await cleanup_exit_stack_of_func(get_machine)
+assert machine.db.closed is True
+
+# Option #2: If you don't care about the other injectable functions,
+#              just use the cleanup_all_exit_stacks() to cleanup all at once.
+assert machine.db.closed is False
+await cleanup_all_exit_stacks()
+assert machine.db.closed is True
+```
+
+### Async Support
+
+`fastapi-injectable` provides full support for both synchronous and asynchronous dependencies, allowing you to mix and match them as needed. You can freely use async dependencies in sync functions and vice versa. For cases where you need to run async code in a synchronous context, we provide the `run_coroutine_sync` utility function.
+
+```python
+from collections.abc import AsyncGenerator
+
+class AsyncDatabase:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def query(self) -> str:
+        return "data"
+
+    async def close(self) -> None:
+        self.closed = True
+
+async def get_async_database() -> AsyncGenerator[AsyncDatabase, None]:
+    db = AsyncDatabase()
+    yield db
+    await db.close()
+
+@injectable
+async def async_process_data(db: Annotated[AsyncDatabase, Depends(get_async_database)]):
+    return await db.query()
+
+# Use it with async/await
+result = await async_process_data()
+print(result) # Output: 'data'
+
+# In sync func, you can still get the result by using `run_coroutine_sync()`
+from fastapi_injectable.concurrency import run_coroutine_sync
+
+result = run_coroutine_sync(async_process_data())
+print(result) # Output: 'data'
+```
+
+### Dependency Caching Control
+
+By default, `fastapi-injectable` caches dependency instances to improve performance and maintain consistency. This means when you request a dependency multiple times, you'll get the same instance back.
+
+You can control this behavior using the `use_cache` parameter in the `@injectable` decorator:
+- `use_cache=True` (default): Dependencies are cached and reused
+- `use_cache=False`: New instances are created for each dependency request
+
+Using `use_cache=False` is particularly useful when:
+- You need fresh instances for each request
+- You want to avoid sharing state between different parts of your application
+- You're dealing with stateful dependencies that shouldn't be reused
+
+```python
+from typing import Annotated
+
+from fastapi import Depends
+
+from fastapi_injectable.decorator import injectable
+
+class Mayor:
+    pass
+
+
+class Capital:
+    def __init__(self, mayor: Mayor) -> None:
+        self.mayor = mayor
+
+
+class Country:
+    def __init__(self, capital: Capital) -> None:
+        self.capital = capital
+
+
+def get_mayor() -> Mayor:
+    return Mayor()
+
+def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+    return Capital(mayor)
+
+@injectable
+def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    return Country(capital)
+
+# With caching (default), all instances share the same dependencies
+country_1 = get_country()
+country_2 = get_country()
+country_3 = get_country()
+assert country_1.capital is country_2.capital is country_3.capital
+assert country_1.capital.mayor is country_2.capital.mayor is country_3.capital.mayor
+
+# Without caching, new instances are created each time
+@injectable(use_cache=False)
+def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    return Country(capital)
+
+country_1 = get_country()
+country_2 = get_country()
+country_3 = get_country()
+assert country_1.capital is not country_2.capital is not country_3.capital
+assert country_1.capital.mayor is not country_2.capital.mayor is not country_3.capital.mayor
+```
+
+### Graceful Shutdown
+
+If you don't care about the generator's lifecycle and just want to ensure proper cleanup when the program exits, you can register cleanup functions anywhere:
+
+```python
+import signal
+
+from fastapi_injectable import setup_graceful_shutdown
+
+# Setup automatic cleanup on shutdown
+setup_graceful_shutdown()  # Handles SIGTERM and SIGINT by signal, and also atexit
+
+# Or specify custom signals
+setup_graceful_shutdown(signals=[signal.SIGTERM])
+```
+
+## Advanced Scenarios
+
+If the basic examples don't cover your needs, check out our test files - they're basically a cookbook of real-world scenarios:
+
+### 1. [`test_injectable.py`](https://github.com/JasperSui/fastapi-injectable/tree/main/test/test_injectable.py) - Shows all possible combinations of:
+
+- Sync/async functions
+- Decorator vs function wrapping
+- Caching vs no caching
+
+### 2. [`test_integration.py`](https://github.com/JasperSui/fastapi-injectable/tree/main/test/test_integration.py) - Demonstrates:
+
+- Resource cleanup
+- Generator dependencies
+- Mixed sync/async dependencies
+- Multiple dependency chains
+
+These test cases mirror common development patterns you'll encounter. They show how to handle complex dependency trees, resource management, and mixing sync/async code - stuff you'll actually use in production.
+
+The test files are written to be self-documenting, so browsing through them will give you practical examples for most scenarios you'll face in your codebase.
+
 ## Real-world Examples
 
 ### 1. Using `Depends` in in-house background worker
 
 Here's a practical example of using `fastapi-injectable` in a background worker that processes messages.
 
-You can find the complete example with more details in the [examples/worker](https://github.com/JasperSui/fastapi-injectable/tree/main/example/worker) directory.
+You can find the complete example with more details in the [examples/worker/main.py](https://github.com/JasperSui/fastapi-injectable/tree/main/example/worker/main.py) file.
 
 This example demonstrates several key patterns for using dependency injection in background workers:
 
@@ -187,7 +464,7 @@ This example demonstrates several key patterns for using dependency injection in
    - `setup_graceful_shutdown()` ensures resources are cleaned up on program termination
    - Handles both SIGTERM and SIGINT signals
 
-This pattern is particularly useful for:
+You can extend the example to re-using the business logic in your:
 - Message queue consumers
 - Batch processing jobs
 - Long-running background tasks
@@ -219,7 +496,7 @@ please [file an issue] along with a detailed description.
 [hypermodern python cookiecutter]: https://github.com/cjolowicz/cookiecutter-hypermodern-python
 [file an issue]: https://github.com/JasperSui/fastapi-injectable/issues
 [pip]: https://pip.pypa.io/
-[his work]: https://github.com/fastapi/fastapi/discussions/7720#discussioncomment-11581187
+[his work]: https://github.com/fastapi/fastapi/discussions/7720#discussioncomment-8661497
 
 ## Bonus
 
