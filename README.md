@@ -17,7 +17,6 @@
 [read the docs]: https://fastapi-injectable.readthedocs.io/
 [tests]: https://github.com/JasperSui/fastapi-injectable/actions?workflow=Tests
 [pre-commit]: https://github.com/pre-commit/pre-commit
-[black]: https://github.com/psf/black
 
 A lightweight package that lets you use FastAPI's dependency injection anywhere - not just in route handlers. Perfect for CLI tools, background tasks, and more.
 
@@ -27,28 +26,62 @@ A lightweight package that lets you use FastAPI's dependency injection anywhere 
 
 ## Quick Start
 
+Basic example:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi_injectable import injectable
+
+class Database:
+    def query(self) -> str:
+        return "data"
+
+def get_db() -> Database:
+    return Database()
+
+@injectable
+def process_data(db: Annotated[Database, Depends(get_db)]) -> str:
+    return db.query()
+
+# Use it anywhere!
+result = process_data()
+print(result) # Output: 'data'
+```
+
 Key features:
 
-- **Flexible Injection APIs**: Choose between decorator or function-based approaches
+- **Flexible Injection APIs**: Use decorator, function-based approach or the utility function!
   ```python
-  from fastapi_injectable.decorator import injectable
+  from typing import Annotated
+
+  from fastapi import Depends
+  from fastapi_injectable import injectable
   from fastapi_injectable.util import get_injected_obj
 
-  # 1. Decorator approach
+  class Database:
+      def query(self) -> str:
+          return "data"
+
+  def get_db() -> Database:
+      return Database()
+
+  # Option 1: Decorator approach
   @injectable
-  def process_data(db: Annotated[Database, Depends(get_db)]):
+  def process_data(db: Annotated[Database, Depends(get_db)]) -> str:
       return db.query()
   result1 = process_data()
 
-  # 2. Function-wrapper approach
-  def process_data(db: Annotated[Database, Depends(get_db)]):
+  # Option 2: Function-wrapper approach
+  def process_data(db: Annotated[Database, Depends(get_db)]) -> str:
       return db.query()
 
   injectable_process_data = injectable(process_data)
   result2 = injectable_process_data()
 
-  # 3. Use the utility
-  def process_data(db: Annotated[Database, Depends(get_db)]):
+  # Option 3: Use the utility
+  def process_data(db: Annotated[Database, Depends(get_db)]) -> str:
       return db.query()
 
   result3 = get_injected_obj(process_data)
@@ -59,20 +92,39 @@ Key features:
 
 - **Support for Both Sync and Async**: Works seamlessly with both synchronous and asynchronous code
   ```python
-  from fastapi_injectable.decorator import injectable
+  from typing import Annotated
 
-  def get_service():
+  from fastapi import Depends
+  from fastapi_injectable import injectable
+
+  class Service:
+      async def process(self) -> None:
+          print("Processing")
+          return
+
+  def get_service() -> Service:
       return Service()
 
   @injectable
-  async def async_task(service: Annotated[Service, Depends(get_service)]):
+  async def async_task(service: Annotated[Service, Depends(get_service)]) -> None:
       await service.process()
+
+  await async_task() # Output: Processing
   ```
 
 - **Controlled Resource Management**: Explicit cleanup of dependencies through utility functions
   ```python
-  from fastapi_injectable.decorator import injectable
+  from collections.abc import Generator
+
+  from fastapi_injectable import injectable
   from fastapi_injectable.util import cleanup_all_exit_stacks, cleanup_exit_stack_of_func
+
+  class Database:
+      def query(self) -> str:
+          return "data"
+
+      def cleanup(self) -> None:
+          print("cleaning")
 
   # Define a dependency with cleanup
   def get_db() -> Generator[Database, None, None]:
@@ -82,8 +134,10 @@ Key features:
 
   # Use the dependency
   @injectable
-  def process_data(db: Annotated[Database, Depends(get_db)]):
+  def process_data(db: Annotated[Database, Depends(get_db)]) -> str:
       return db.query()
+
+  result = process_data()
 
   # Cleanup options
   await cleanup_exit_stack_of_func(process_data)  # Option #1: Cleanup specific function's resources
@@ -101,11 +155,9 @@ Key features:
   class Mayor:
       pass
 
-
   class Capital:
       def __init__(self, mayor: Mayor) -> None:
           self.mayor = mayor
-
 
   class Country:
       def __init__(self, capital: Capital) -> None:
@@ -177,6 +229,7 @@ This package is particularly useful for:
    * [License](#license)
    * [Issues](#issues)
    * [Credits](#credits)
+   * [Related Issue & Discussion](#related-issue-discussion)
    * [Bonus](#bonus)
 
 ## Requirements
@@ -364,16 +417,13 @@ from fastapi_injectable.decorator import injectable
 class Mayor:
     pass
 
-
 class Capital:
     def __init__(self, mayor: Mayor) -> None:
         self.mayor = mayor
 
-
 class Country:
     def __init__(self, capital: Capital) -> None:
         self.capital = capital
-
 
 def get_mayor() -> Mayor:
     return Mayor()
@@ -497,6 +547,11 @@ please [file an issue] along with a detailed description.
 [file an issue]: https://github.com/JasperSui/fastapi-injectable/issues
 [pip]: https://pip.pypa.io/
 [his work]: https://github.com/fastapi/fastapi/discussions/7720#discussioncomment-8661497
+
+## Related Issue & Discussion
+
+- [[Issue] Using Depends() in other functions, outside the endpoint path operation!](https://github.com/fastapi/fastapi/issues/1105)
+- [[Discussion] Using Depends() in other functions, outside the endpoint path operation!](https://github.com/fastapi/fastapi/discussions/7720)
 
 ## Bonus
 
