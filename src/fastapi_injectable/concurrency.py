@@ -48,4 +48,4 @@ def run_coroutine_sync(coro: Coroutine[Any, Any, T], *, timeout: float = 30) -> 
             return future.result(timeout=timeout)
     else:
         # For non-main threads
-        return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout=timeout)
+        return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout=timeout)  # pragma: no cover

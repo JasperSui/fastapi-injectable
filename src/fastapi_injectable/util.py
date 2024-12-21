@@ -91,27 +91,39 @@ def get_injected_obj(
     return cast(T, injectable_func())  # type: ignore[call-arg]
 
 
-async def cleanup_exit_stack_of_func(func: Callable[..., Any]) -> None:
+async def cleanup_exit_stack_of_func(func: Callable[..., Any], *, raise_exception: bool = False) -> None:
     """Clean up the exit stack associated with a specific function.
 
     Args:
         func: The function whose exit stack should be cleaned up.
+        raise_exception: Whether to raise exceptions during cleanup.
+            If False, exceptions are logged as warnings. Defaults to False.
 
     Notes:
         - This ensures that resources such as context managers or other async cleanup routines
           are properly closed for the given function.
+
+    Raises:
+        DependencyCleanupError: When cleanup fails and raise_exception is True
     """
-    await async_exit_stack_manager.cleanup_stack(func)
+    await async_exit_stack_manager.cleanup_stack(func, raise_exception=raise_exception)
 
 
-async def cleanup_all_exit_stacks() -> None:
+async def cleanup_all_exit_stacks(*, raise_exception: bool = False) -> None:
     """Clean up all active exit stacks.
+
+    Args:
+        raise_exception: Whether to raise exceptions during cleanup.
+            If False, exceptions are logged as warnings. Defaults to False.
 
     Notes:
         - This method iterates through all registered exit stacks and ensures they are properly closed.
         - Typically used during application shutdown to release all managed resources.
+
+    Raises:
+        DependencyCleanupError: When cleanup fails and raise_exception is True
     """
-    await async_exit_stack_manager.cleanup_all_stacks()
+    await async_exit_stack_manager.cleanup_all_stacks(raise_exception=raise_exception)
 
 
 async def clear_dependency_cache() -> None:
@@ -124,23 +136,28 @@ async def clear_dependency_cache() -> None:
     await dependency_cache.clear()
 
 
-def setup_graceful_shutdown(signals: list[signal.Signals] | None = None) -> None:
+def setup_graceful_shutdown(signals: list[signal.Signals] | None = None, *, raise_exception: bool = False) -> None:
     """Register handlers to perform cleanup during application shutdown.
 
     Args:
         signals: A list of OS signals that should trigger the cleanup process.
                  Defaults to [SIGINT, SIGTERM].
+        raise_exception: Whether to raise exceptions during cleanup.
+            If False, exceptions are logged as warnings. Defaults to False.
 
     Notes:
         - When a registered signal is received, this function ensures that all resources
           (e.g., exit stacks) are properly released before the application exits.
         - Also registers a cleanup routine via `atexit` to handle unexpected shutdown scenarios.
+
+    Raises:
+        DependencyCleanupError: When cleanup fails and raise_exception is True
     """
     if signals is None:
         signals = [signal.SIGINT, signal.SIGTERM]
 
     def sync_cleanup(*_: Any) -> None:  # noqa: ANN401
-        run_coroutine_sync(cleanup_all_exit_stacks())
+        run_coroutine_sync(cleanup_all_exit_stacks(raise_exception=raise_exception))
 
     atexit.register(sync_cleanup)
     for sig in signals:
