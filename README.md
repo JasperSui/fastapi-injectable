@@ -1,6 +1,6 @@
 <!-- homepage-begin -->
 <p align="center">
-  <img src="https://github.com/JasperSui/fastapi-injectable/blob/main/static/image/logo.png" alt="FastAPI Injectable" height="200">
+  <img src="https://raw.githubusercontent.com/JasperSui/fastapi-injectable/main/static/image/logo.png" alt="FastAPI Injectable" height="200">
 </p>
 <p align="center">
     <em>Use FastAPI's Depends() anywhere - even outside FastAPI routes</em>
