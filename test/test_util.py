@@ -1,5 +1,5 @@
 import signal
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -72,12 +72,38 @@ def test_get_injected_obj_async(mock_injectable: Mock, mock_run_coroutine_sync: 
     mock_run_coroutine_sync.assert_called_once()
 
 
+async def test_get_injected_obj_async_generator(mock_injectable: Mock, mock_run_coroutine_sync: Mock) -> None:
+    async def dummy_async_gen_dependency() -> AsyncGenerator[DummyDependency, None]:
+        yield DummyDependency()
+
+    mock_injectable.return_value = lambda: dummy_async_gen_dependency()
+    mock_run_coroutine_sync.return_value = DummyDependency()
+
+    result = get_injected_obj(dummy_async_gen_dependency)
+
+    mock_injectable.assert_called_once_with(dummy_async_gen_dependency, use_cache=True, raise_exception=False)
+    assert isinstance(result, DummyDependency)
+    mock_run_coroutine_sync.assert_called_once()
+
+
+def test_get_injected_obj_sync_generator(mock_injectable: Mock, mock_run_coroutine_sync: Mock) -> None:
+    def dummy_gen_dependency() -> Generator[DummyDependency, None, None]:
+        yield DummyDependency()
+
+    mock_injectable.return_value = lambda: dummy_gen_dependency()
+    result = get_injected_obj(dummy_gen_dependency)
+
+    mock_injectable.assert_called_once_with(dummy_gen_dependency, use_cache=True, raise_exception=False)
+    assert isinstance(result, DummyDependency)
+    mock_run_coroutine_sync.assert_not_called()
+
+
 async def test_cleanup_exit_stack_of_func(mock_async_exit_stack_manager: Mock) -> None:
     def func() -> None:
         return None
 
     await cleanup_exit_stack_of_func(func)
-    mock_async_exit_stack_manager.cleanup_stack.assert_awaited_once_with(func)
+    mock_async_exit_stack_manager.cleanup_stack.assert_awaited_once_with(func, raise_exception=False)
 
 
 async def test_cleanup_all_exit_stacks(mock_async_exit_stack_manager: Mock) -> None:
@@ -111,3 +137,20 @@ def test_setup_graceful_shutdown_custom_signals(mock_run_coroutine_sync: Mock) -
             mock_register.assert_called_once()
             assert mock_signal.call_count == 1
             mock_signal.assert_any_call(signal.SIGINT, mock_register.call_args[0][0])
+
+
+def test_setup_graceful_shutdown_handler_called(mock_run_coroutine_sync: Mock) -> None:
+    with patch("src.fastapi_injectable.util.atexit.register") as mock_register:  # noqa: SIM117
+        with patch("src.fastapi_injectable.util.signal.signal") as mock_signal:  # noqa: F841
+            setup_graceful_shutdown()
+
+            # Get the registered cleanup handler
+            cleanup_handler = mock_register.call_args[0][0]
+
+            # Call the handler directly to test it
+            cleanup_handler()
+
+            mock_run_coroutine_sync.assert_called_once()
+
+            # Verify it's called with cleanup_all_exit_stacks
+            assert mock_run_coroutine_sync.call_args[0][0].__name__ == "cleanup_all_exit_stacks"
