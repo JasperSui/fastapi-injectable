@@ -20,7 +20,7 @@ except ImportError:
 
 
 package = "fastapi_injectable"
-python_versions = ["3.10", "3.11", "3.12"]
+python_versions = ["3.10", "3.11", "3.12", "3.13"]
 latest_python_version = python_versions[-1]
 nox.needs_version = ">= 2024.10.9"
 nox.options.sessions = (
