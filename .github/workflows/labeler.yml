@@ -6,6 +6,11 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   labeler:
     runs-on: ubuntu-latest

@@ -4,6 +4,11 @@ on:
   - push
   - pull_request
 
+permissions:
+  contents: read
+  actions: read
+  checks: write  # Required for uploading test results
+
 jobs:
   tests:
     name: ${{ matrix.session }} ${{ matrix.python }} / ${{ matrix.os }}
