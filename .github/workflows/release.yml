@@ -138,42 +138,29 @@ jobs:
             fi
           fi
 
-      - name: Create and push tag
+      - name: Bump version and push tag
         id: create-tag
-        if: |
-          (github.event_name == 'workflow_dispatch' && inputs.create_tag) ||
-          (github.event_name == 'pull_request' && steps.version-check.outputs.changed == 'true')
-        run: |
-          VERSION=${{ steps.version-check.outputs.version }}
-          if git tag -a "v${VERSION}" -m "Release version ${VERSION}" 2>/dev/null; then
-            if git push origin "v${VERSION}" 2>/dev/null; then
-              echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
-              echo "tag_created=true" >> $GITHUB_OUTPUT
-            else
-              echo "Failed to push tag v${VERSION}"
-              exit 1
-            fi
-          else
-            echo "Failed to create tag v${VERSION}"
-            exit 1
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.version-check.outputs.changed == 'true'
+        uses: mathieudutour/github-tag-action@a22cf08638b34d5badda920f9daf6e72c477b07b
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          custom_tag: ${{ steps.version-check.outputs.version }}
 
       - name: Build package
         run: |
           poetry build --ansi
 
       - name: Publish package on PyPI
-        if: steps.create-tag.outputs.tag_created == 'true'
+        if: steps.version-check.outputs.changed == 'true' && steps.create-tag.outputs.new_tag != ''
         uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70 # v1.12.3
         with:
           verbose: true
 
       - name: Publish the release notes
         uses: release-drafter/release-drafter@3f0f87098bd6b5c5b9a36d49c41d998ea58f9348 # v6.0.0
+        if: steps.version-check.outputs.changed == 'true' && steps.create-tag.outputs.new_tag != ''
         with:
-          publish: ${{ steps.create-tag.outputs.tag_created == 'true' }}
-          tag: ${{ steps.create-tag.outputs.tag }}
+          publish: ${{ steps.create-tag.outputs.new_tag != '' }}
+          tag: ${{ steps.create-tag.outputs.new_tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
