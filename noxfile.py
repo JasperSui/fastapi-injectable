@@ -134,8 +134,25 @@ def mypy(session: Session) -> None:
 def tests(session: Session) -> None:
     """Run the test suite."""
     session.install(".")
-    session.install("pytest", "pytest-asyncio")
-    session.run("pytest", *session.posargs)
+    session.install("coverage[toml]", "pytest", "pytest-asyncio")
+    try:
+        session.run("coverage", "run", "--parallel", "-m", "pytest", *session.posargs)
+    finally:
+        if session.interactive:
+            session.notify("coverage", posargs=[])
+
+
+@session(python=latest_python_version)
+def coverage(session: Session) -> None:
+    """Produce the coverage report."""
+    args = session.posargs or ["report"]
+
+    session.install("coverage[toml]")
+
+    if not session.posargs and any(Path().glob(".coverage.*")):
+        session.run("coverage", "combine")
+
+    session.run("coverage", *args)
 
 
 @session(name="docs-build", python=latest_python_version)

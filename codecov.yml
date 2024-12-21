@@ -1,0 +1,14 @@
+.comment: false
+coverage:
+  status:
+    project:
+      default:
+        target: "100"
+    patch:
+      default:
+        target: "100"
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false

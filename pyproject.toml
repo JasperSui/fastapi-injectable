@@ -37,10 +37,7 @@ myst-parser = { version = "^4.0.0" }
 ipython = "^8.30.0"
 ipdb = "^0.13.13"
 furo = "^2024.8.6"
-
-[tool.poetry.scripts]
-fastapi-injectable = "fastapi_injectable.__main__:main"
-
+coverage = { extras = ["toml"], version = "^7.6.9" }
 
 [tool.ruff]
 lint.ignore = [
@@ -106,6 +103,33 @@ show_error_context = true
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "session"
 asyncio_mode = "auto"
+
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+tests = ["test", "*/test"]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 100
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+    "if TYPE_CHECKING:",
+    "except RuntimeError:",
+    "def set_original_func",
+]
+omit = ["example/*"]
+
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
