@@ -52,7 +52,7 @@ async def test_cleanup_stack_with_existing_func_but_with_empty_stack(
     manager: AsyncExitStackManager, mock_func: Mock
 ) -> None:
     manager._stacks = AsyncMock(some_key="some_value")
-    mock_stacks_pop = AsyncMock(return_value=None)
+    mock_stacks_pop = Mock(return_value=None)
     manager._stacks.pop = mock_stacks_pop
 
     await manager.cleanup_stack(mock_func)  # try to cleanup a function that is not in the stack

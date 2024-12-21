@@ -139,7 +139,7 @@ def test_setup_graceful_shutdown_custom_signals(mock_run_coroutine_sync: Mock) -
             mock_signal.assert_any_call(signal.SIGINT, mock_register.call_args[0][0])
 
 
-def test_setup_graceful_shutdown_handler_called(mock_run_coroutine_sync: Mock) -> None:
+async def test_setup_graceful_shutdown_handler_called(mock_run_coroutine_sync: Mock) -> None:
     with patch("src.fastapi_injectable.util.atexit.register") as mock_register:  # noqa: SIM117
         with patch("src.fastapi_injectable.util.signal.signal") as mock_signal:  # noqa: F841
             setup_graceful_shutdown()
@@ -152,5 +152,10 @@ def test_setup_graceful_shutdown_handler_called(mock_run_coroutine_sync: Mock) -
 
             mock_run_coroutine_sync.assert_called_once()
 
-            # Verify it's called with cleanup_all_exit_stacks
-            assert mock_run_coroutine_sync.call_args[0][0].__name__ == "cleanup_all_exit_stacks"
+            # Get the coroutine that was passed to run_coroutine_sync
+            cleanup_coro = mock_run_coroutine_sync.call_args[0][0]
+
+            # Actually await the coroutine
+            await cleanup_coro
+
+            assert cleanup_coro.__name__ == "cleanup_all_exit_stacks"
