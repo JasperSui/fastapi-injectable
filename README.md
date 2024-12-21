@@ -7,7 +7,7 @@
 
 [![Read the documentation at https://fastapi-injectable.readthedocs.io/](https://img.shields.io/readthedocs/fastapi-injectable/latest.svg?label=Read%20the%20Docs)][read the docs]
 [![Tests](https://github.com/JasperSui/fastapi-injectable/workflows/Tests/badge.svg)][tests]
-
+[![Codecov](https://codecov.io/gh/JasperSui/fastapi-injectable/branch/main/graph/badge.svg)][codecov]
 
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)][pre-commit]
 
@@ -16,6 +16,7 @@
 [python version]: https://pypi.org/project/fastapi-injectable
 [read the docs]: https://fastapi-injectable.readthedocs.io/
 [tests]: https://github.com/JasperSui/fastapi-injectable/actions?workflow=Tests
+[codecov]: https://app.codecov.io/gh/JasperSui/fastapi-injectable
 [pre-commit]: https://github.com/pre-commit/pre-commit
 
 A lightweight package that lets you use FastAPI's dependency injection anywhere - not just in route handlers. Perfect for CLI tools, background tasks, and more.
