@@ -1,6 +1,25 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy to which environment'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+        - test
+        - production
+      create_tag:
+        description: 'Create git tag'
+        required: true
+        default: 'true'
+        type: boolean
+      version:
+        description: 'Version to tag (leave empty to use pyproject.toml version)'
+        required: false
+        type: string
   pull_request:
     branches:
       - main
@@ -16,17 +35,20 @@ permissions:
 jobs:
   test-release:
     name: TestPyPI Release
-    if: >
-      (github.event.pull_request.merged == false) &&
-      startsWith(github.head_ref, 'release/') &&
-      (github.event.action == 'opened' || github.event.action == 'synchronize')
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'test') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == false &&
+       startsWith(github.head_ref, 'release/') &&
+       (github.event.action == 'opened' || github.event.action == 'synchronize'))
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -61,13 +83,18 @@ jobs:
 
   release:
     name: PyPI Release
-    if: github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/')
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       startsWith(github.head_ref, 'release/'))
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
@@ -88,20 +115,33 @@ jobs:
       - name: Check version change
         id: version-check
         run: |
-          CURRENT_VERSION=$(poetry version | awk '{ print $2 }')
-          git checkout HEAD^
-          PREVIOUS_VERSION=$(poetry version | awk '{ print $2 }')
-          git checkout -
-          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-            echo "version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.version }}" ]; then
+              echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+              echo "changed=true" >> $GITHUB_OUTPUT
+            else
+              CURRENT_VERSION=$(poetry version | awk '{ print $2 }')
+              echo "version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+              echo "changed=true" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
+            CURRENT_VERSION=$(poetry version | awk '{ print $2 }')
+            git checkout HEAD^
+            PREVIOUS_VERSION=$(poetry version | awk '{ print $2 }')
+            git checkout -
+            if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+              echo "changed=true" >> $GITHUB_OUTPUT
+              echo "version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+            else
+              echo "changed=false" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Create and push tag
         id: create-tag
-        if: steps.version-check.outputs.changed == 'true'
+        if: |
+          (github.event_name == 'workflow_dispatch' && inputs.create_tag == 'true') ||
+          (github.event_name == 'pull_request' && steps.version-check.outputs.changed == 'true')
         run: |
           VERSION=${{ steps.version-check.outputs.version }}
           if git tag -a "v${VERSION}" -m "Release version ${VERSION}" 2>/dev/null; then
@@ -122,7 +162,7 @@ jobs:
           poetry build --ansi
 
       - name: Publish package on PyPI
-        if: steps.version-check.outputs.changed == 'true'
+        if: steps.create-tag.outputs.tag_created == 'true'
         uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70 # v1.12.3
         with:
           verbose: true
@@ -130,7 +170,7 @@ jobs:
       - name: Publish the release notes
         uses: release-drafter/release-drafter@3f0f87098bd6b5c5b9a36d49c41d998ea58f9348 # v6.0.0
         with:
-          publish: ${{ steps.version-check.outputs.changed == 'true' }}
-          tag: ${{ steps.version-check.outputs.tag }}
+          publish: ${{ steps.create-tag.outputs.tag_created == 'true' }}
+          tag: ${{ steps.create-tag.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
