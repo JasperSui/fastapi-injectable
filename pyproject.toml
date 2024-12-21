@@ -110,6 +110,7 @@ source = ["src", "*/site-packages"]
 tests = ["test", "*/test"]
 
 [tool.coverage.run]
+parallel = true
 branch = true
 source = ["src"]
 
