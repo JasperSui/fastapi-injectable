@@ -79,7 +79,7 @@ async def test_get_injected_obj_async_generator(mock_injectable: Mock, mock_run_
     mock_injectable.return_value = lambda: dummy_async_gen_dependency()
     mock_run_coroutine_sync.return_value = DummyDependency()
 
-    result = get_injected_obj(dummy_async_gen_dependency)
+    result: DummyDependency = get_injected_obj(dummy_async_gen_dependency)  # type: ignore[arg-type]
 
     mock_injectable.assert_called_once_with(dummy_async_gen_dependency, use_cache=True, raise_exception=False)
     assert isinstance(result, DummyDependency)
@@ -91,7 +91,7 @@ def test_get_injected_obj_sync_generator(mock_injectable: Mock, mock_run_corouti
         yield DummyDependency()
 
     mock_injectable.return_value = lambda: dummy_gen_dependency()
-    result = get_injected_obj(dummy_gen_dependency)
+    result: DummyDependency = get_injected_obj(dummy_gen_dependency)  # type: ignore[arg-type]
 
     mock_injectable.assert_called_once_with(dummy_gen_dependency, use_cache=True, raise_exception=False)
     assert isinstance(result, DummyDependency)
