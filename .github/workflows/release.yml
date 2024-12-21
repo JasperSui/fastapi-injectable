@@ -17,7 +17,7 @@ on:
         default: 'true'
         type: boolean
       version:
-        description: 'Version to tag (leave empty to use pyproject.toml version)'
+        description: 'Version (without v prefix) to tag (leave empty to use pyproject.toml version)'
         required: false
         type: string
   pull_request:
@@ -140,7 +140,7 @@ jobs:
       - name: Create and push tag
         id: create-tag
         if: |
-          (github.event_name == 'workflow_dispatch' && inputs.create_tag == 'true') ||
+          (github.event_name == 'workflow_dispatch' && inputs.create_tag) ||
           (github.event_name == 'pull_request' && steps.version-check.outputs.changed == 'true')
         run: |
           VERSION=${{ steps.version-check.outputs.version }}
