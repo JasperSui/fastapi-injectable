@@ -55,7 +55,7 @@ class AsyncExitStackManager:
                 msg = f"Failed to cleanup stack for {func.__name__}"
                 if raise_exception:
                     raise DependencyCleanupError(msg) from e
-                logger.exception(msg)
+                logger.exception(msg)  # pragma: no cover
 
     async def cleanup_all_stacks(self, *, raise_exception: bool = False) -> None:
         """Clean up all stacks.
