@@ -157,3 +157,7 @@ jobs:
 
       - name: Upload coverage report
         uses: codecov/codecov-action@1e68e06f1dbfde0e4cefc87efeba9e4643565303 # v5.1.2
+        with:
+          name: fastapi-injectable
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
