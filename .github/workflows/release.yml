@@ -5,6 +5,8 @@ on:
     branches:
       - main
     types:
+      - opened
+      - synchronize
       - closed
 
 permissions:
@@ -12,8 +14,53 @@ permissions:
   id-token: write
 
 jobs:
+  test-release:
+    name: TestPyPI Release
+    if: >
+      (github.event.pull_request.merged == false) &&
+      startsWith(github.head_ref, 'release/') &&
+      (github.event.action == 'opened' || github.event.action == 'synchronize')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 2
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.10"
+
+      - name: Upgrade pip
+        run: |
+          pip install --constraint=requirements/constraints.txt pip setuptools
+          pip --version
+
+      - name: Install Poetry
+        run: |
+          pip install --constraint=requirements/constraints.txt poetry
+          poetry --version
+
+      - name: Bump version for TestPyPI release
+        run: |
+          CURRENT_VERSION=$(poetry version | awk '{ print $2 }')
+          poetry version $CURRENT_VERSION.dev.$(date +%s)
+
+      - name: Build package
+        run: |
+          poetry build --ansi
+
+      - name: Publish package on TestPyPI
+        uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70 # v1.12.3
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          verbose: true
+
+
   release:
-    name: Release
+    name: PyPI Release
     if: github.event.pull_request.merged == true && startsWith(github.head_ref, 'release/')
     runs-on: ubuntu-latest
     steps:
@@ -37,49 +84,52 @@ jobs:
           pip install --constraint=requirements/constraints.txt poetry
           poetry --version
 
-      - name: Check if there is a parent commit
-        id: check-parent-commit
+      - name: Check version change
+        id: version-check
         run: |
-          echo "::set-output name=sha::$(git rev-parse --verify --quiet HEAD^)"
+          CURRENT_VERSION=$(poetry version | awk '{ print $2 }')
+          git checkout HEAD^
+          PREVIOUS_VERSION=$(poetry version | awk '{ print $2 }')
+          git checkout -
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=${CURRENT_VERSION}" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Detect and tag new version
-        id: check-version
-        if: steps.check-parent-commit.outputs.sha
-        uses: salsify/action-detect-and-tag-new-version@b1778166f13188a9d478e2d1198f993011ba9864 # v2.0.3
-        with:
-          version-command: |
-            bash -o pipefail -c "poetry version | awk '{ print \$2 }'"
-
-      - name: Bump version for developmental release
-        if: "! steps.check-version.outputs.tag"
+      - name: Create and push tag
+        id: create-tag
+        if: steps.version-check.outputs.changed == 'true'
         run: |
-          poetry version patch &&
-          version=$(poetry version | awk '{ print $2 }') &&
-          poetry version $version.dev.$(date +%s)
+          VERSION=${{ steps.version-check.outputs.version }}
+          if git tag -a "v${VERSION}" -m "Release version ${VERSION}" 2>/dev/null; then
+            if git push origin "v${VERSION}" 2>/dev/null; then
+              echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+              echo "tag_created=true" >> $GITHUB_OUTPUT
+            else
+              echo "Failed to push tag v${VERSION}"
+              exit 1
+            fi
+          else
+            echo "Failed to create tag v${VERSION}"
+            exit 1
+          fi
 
       - name: Build package
         run: |
           poetry build --ansi
 
       - name: Publish package on PyPI
-        if: steps.check-version.outputs.tag
+        if: steps.version-check.outputs.changed == 'true'
         uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70 # v1.12.3
         with:
-          user: __token__
-          password: ${{ secrets.PYPI_TOKEN }}
-
-      - name: Publish package on TestPyPI
-        if: "! steps.check-version.outputs.tag"
-        uses: pypa/gh-action-pypi-publish@67339c736fd9354cd4f8cb0b744f2b82a74b5c70 # v1.12.3
-        with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
-          repository_url: https://test.pypi.org/legacy/
+          verbose: true
 
       - name: Publish the release notes
-        uses: release-drafter/release-drafter@3f0f87098bd6b5c5b9a36d49c41d998ea58f9348 # v6.0.0
+        uses: release-drafter/release-drafter@3f0f87098bd6c5c9a36d49c41d998ea58f9348 # v6.0.0
         with:
-          publish: ${{ steps.check-version.outputs.tag != '' }}
-          tag: ${{ steps.check-version.outputs.tag }}
+          publish: ${{ steps.version-check.outputs.changed == 'true' }}
+          tag: ${{ steps.version-check.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
