@@ -1,21 +1,24 @@
-```{include} ../README.md
----
-end-before: <!-- github-only -->
----
-```
-
-[license]: license
-[contributor guide]: contributing
+# FastAPI Injectable
 
 ```{toctree}
 ---
-hidden:
+hidden: true
 maxdepth: 1
 ---
 
-reference
-contributing
+Basic Usage <usage>
+Advanced Scenarios <advanced-scenarios>
+Real World Examples <real-world-examples>
+Useful Information <info>
+Contributing <contributing>
+Changelog <https://github.com/JasperSui/fastapi-injectable/releases>
 Code of Conduct <codeofconduct>
 License <license>
-Changelog <https://github.com/JasperSui/fastapi-injectable/releases>
+```
+
+```{include} ../README.md
+---
+start-after: <!-- homepage-begin -->
+end-before: <!-- homepage-end -->
+---
 ```
