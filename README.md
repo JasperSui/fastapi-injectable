@@ -379,32 +379,53 @@ Please refer to the [Real-world Examples](https://fastapi-injectable.readthedocs
 
 <!-- faq-begin -->
 
-- [Why would I need this package?](#why-would-i-need-this-package)
-- [Why not directly use other DI packages like Dependency Injector or FastDepends?](#why-not-directly-use-other-di-packages-like-dependency-injector-or-fastdepends)
-- [Can I use it with existing FastAPI dependencies?](#can-i-use-it-with-existing-fastapi-dependencies)
-- [Does it work with all FastAPI dependency types?](#does-it-work-with-all-fastapi-dependency-types)
-- [What happens to dependency cleanup in long-running processes?](#what-happens-to-dependency-cleanup-in-long-running-processes)
-- [Can I mix sync and async dependencies?](#can-i-mix-sync-and-async-dependencies)
-- [Are type hints fully supported for `injectable()` and `get_injected_obj()`?](#are-type-hints-fully-supported-for-injectable-and-get_injected_obj)
-- [How does caching work?](#how-does-caching-work)
-- [Is it production-ready?](#is-it-production-ready)
+- [Basic Example](#basic-example)
+- [Key Features](#key-features)
+- [Overview](#overview)
+  - [Requirements](#requirements)
+- [Usage](#usage)
+  - [Basic Injection](#basic-injection)
+  - [Function-based Approach](#function-based-approach)
+  - [Generator Dependencies with Cleanup](#generator-dependencies-with-cleanup)
+  - [Async Support](#async-support)
+  - [Dependency Caching Control](#dependency-caching-control)
+  - [Graceful Shutdown](#graceful-shutdown)
+- [Advanced Scenarios](#advanced-scenarios)
+  - [1. `test_injectable.py` - Shows all possible combinations of:](#1-test_injectablepy---shows-all-possible-combinations-of)
+  - [2. `test_integration.py` - Demonstrates:](#2-test_integrationpy---demonstrates)
+- [Real-world Examples](#real-world-examples)
+  - [1. Processing messages by background worker with `Depends()`](#1-processing-messages-by-background-worker-with-depends)
+- [Frequently Asked Questions](#frequently-asked-questions)
+  - [Why would I need this package?](#why-would-i-need-this-package)
+  - [Why not directly use other DI packages like Dependency Injector or FastDepends?](#why-not-directly-use-other-di-packages-like-dependency-injector-or-fastdepends)
+  - [Can I use it with existing FastAPI dependencies?](#can-i-use-it-with-existing-fastapi-dependencies)
+  - [Does it work with all FastAPI dependency types?](#does-it-work-with-all-fastapi-dependency-types)
+  - [What happens to dependency cleanup in long-running processes?](#what-happens-to-dependency-cleanup-in-long-running-processes)
+  - [Can I mix sync and async dependencies?](#can-i-mix-sync-and-async-dependencies)
+  - [Are type hints fully supported for `injectable()` and `get_injected_obj()`?](#are-type-hints-fully-supported-for-injectable-and-get_injected_obj)
+  - [How does caching work?](#how-does-caching-work)
+  - [Is it production-ready?](#is-it-production-ready)
+- [Contributing](#contributing)
+- [License](#license)
+- [Issues](#issues)
+- [Credits](#credits)
+- [Related Issue \& Discussion](#related-issue--discussion)
+- [Bonus](#bonus)
 
 
 ### Why would I need this package?
-<hr>
 
-If your project heavily relies on FastAPI's `Depends()` as the sole DI system and you don't want to introduce additional DI packages (like [Dependency Injector](https://python-dependency-injector.ets-labs.org/) or [FastDepends](https://github.com/Lancetnik/FastDepends)), `fastapi-injectable` is your friend.
+A: If your project heavily relies on FastAPI's `Depends()` as the sole DI system and you don't want to introduce additional DI packages (like [Dependency Injector](https://python-dependency-injector.ets-labs.org/) or [FastDepends](https://github.com/Lancetnik/FastDepends)), `fastapi-injectable` is your friend.
 
 It allows you to reuse your existing FastAPI built-in DI system anywhere, without the need to **refactor your entire codebase** or **maintain multiple DI systems**.
 
 Life is short, keep it simple!
 
-<br>
-
-### Why not directly use other DI packages like Dependency Injector or FastDepends?
 <hr>
 
-You absolutely can if your situation allows you to:
+### Why not directly use other DI packages like Dependency Injector or FastDepends?
+
+A: You absolutely can if your situation allows you to:
 1. Modify large amounts of existing code that uses `Depends()`
 2. Maintain multiple DI systems in your project
 
@@ -414,72 +435,65 @@ For projects with hundreds of dependency functions (especially with nested depen
 
 Choose what works best for you!
 
-<br>
-
-### Can I use it with existing FastAPI dependencies?
 <hr>
 
-Absolutely! That's exactly what this package was built for! `fastapi-injectable` was created to seamlessly work with FastAPI's dependency injection system, allowing you to reuse your existing `Depends()` code **anywhere** - not just in routes.
+### Can I use it with existing FastAPI dependencies?
+
+A: Absolutely! That's exactly what this package was built for! `fastapi-injectable` was created to seamlessly work with FastAPI's dependency injection system, allowing you to reuse your existing `Depends()` code **anywhere** - not just in routes.
 
 Focus on what matters instead of worrying about how to get your existing dependencies outside of FastAPI routes!
 
-<br>
-
-### Does it work with all FastAPI dependency types?
 <hr>
 
-Yes! It supports:
+### Does it work with all FastAPI dependency types?
+
+A: Yes! It supports:
 - Regular dependencies
 - Generator dependencies (with cleanup utility functions)
 - Async dependencies
 - Sync dependencies
 - Nested dependencies (dependencies with sub-dependencies)
 
-<br>
-
-### What happens to dependency cleanup in long-running processes?
 <hr>
 
-You have three options:
+### What happens to dependency cleanup in long-running processes?
+
+A: You have three options:
 1. Manual cleanup per function: `await cleanup_exit_stack_of_func(your_func)`
 2. Cleanup everything: `await cleanup_all_exit_stacks()`
 3. Automatic cleanup on shutdown: `setup_graceful_shutdown()`
 
-<br>
+<hr>
 
 ### Can I mix sync and async dependencies?
+
+A: Yes! You can freely mix them. For running async code in sync contexts, use the provided `run_coroutine_sync()` utility.
+
 <hr>
-
-Yes! You can freely mix them. For running async code in sync contexts, use the provided `run_coroutine_sync()` utility.
-
-<br>
 
 ### Are type hints fully supported for `injectable()` and `get_injected_obj()`?
-<hr>
 
-Currently, type hint support is a work in progress. However, this doesn't affect the core benefits of the package (seamlessly reusing and maintaining consistency in your FastAPI DI system).
+A: Currently, type hint support is a work in progress. However, this doesn't affect the core benefits of the package (seamlessly reusing and maintaining consistency in your FastAPI DI system).
 
 We're actively working on improving type hint support, and we'll have good news on this front soon! In the meantime, enjoy the elegant and clean solution that `fastapi-injectable` provides.
 
-<br>
+<hr>
 
 ### How does caching work?
+
+A: By default, dependencies are cached like in FastAPI routes. You can disable caching with `@injectable(use_cache=False)` if you need fresh instances.
+
 <hr>
-
-By default, dependencies are cached like in FastAPI routes. You can disable caching with `@injectable(use_cache=False)` if you need fresh instances.
-
-<br>
 
 ### Is it production-ready?
-<hr>
 
-Yes! The package has:
+A: Yes! The package has:
 - **100%** test coverage
 - Type checking with `mypy`
 - Comprehensive error handling
 - Production use cases documented
 
-<br>
+<hr>
 
 <!-- faq-end -->
 
