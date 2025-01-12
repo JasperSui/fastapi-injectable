@@ -1,8 +1,8 @@
 import atexit
 import inspect
 import signal
-from collections.abc import AsyncGenerator, Awaitable, Callable, Generator
-from typing import Any, ParamSpec, TypeVar, cast
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
+from typing import Any, ParamSpec, TypeVar, cast, overload
 
 from .cache import dependency_cache
 from .concurrency import run_coroutine_sync
@@ -13,6 +13,50 @@ T = TypeVar("T")
 P = ParamSpec("P")
 
 
+@overload
+def get_injected_obj(
+    func: Callable[..., Awaitable[T]],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+    raise_exception: bool = False,
+) -> T: ...
+
+
+@overload
+def get_injected_obj(
+    func: Callable[..., Generator[T, Any, Any]],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+    raise_exception: bool = False,
+) -> T: ...
+
+
+@overload
+def get_injected_obj(
+    func: Callable[..., AsyncGenerator[T, Any]],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+    raise_exception: bool = False,
+) -> T: ...
+
+
+@overload
+def get_injected_obj(
+    func: Callable[..., T],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+    raise_exception: bool = False,
+) -> T: ...
+
+
 def get_injected_obj(
     func: (
         Callable[P, T]
@@ -20,6 +64,8 @@ def get_injected_obj(
         | Callable[P, Generator[T, Any, Any]]
         | Callable[P, AsyncGenerator[T, Any]]
     ),
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
     raise_exception: bool = False,
@@ -35,6 +81,8 @@ def get_injected_obj(
             - An async function (coroutine)
             - A synchronous generator
             - An async generator
+        args: Positional arguments to pass to the dependency function.
+        kwargs: Keyword arguments to pass to the dependency function.
         use_cache: Whether to cache resolved dependencies. Defaults to True.
         raise_exception: Whether to raise exceptions during dependency resolution.
             If False, exceptions are logged as warnings. Defaults to False.
@@ -70,25 +118,30 @@ def get_injected_obj(
         - Cleanup code in generators will be executed when calling cleanup functions
         - Uses FastAPI's dependency injection system under the hood
     """
-    # TODO(Jasper Sui): Correct the type hints down below.  # noqa: TD003
     injectable_func = injectable(func, use_cache=use_cache, raise_exception=raise_exception)
+
+    if args is None:
+        args = []
+    if kwargs is None:
+        kwargs = {}
 
     if inspect.isasyncgenfunction(func):
         # Handle async generator
-        async_gen = injectable_func()  # type: ignore[call-arg]
-        return cast(T, run_coroutine_sync(anext(async_gen)))  # type: ignore[call-overload]
+        async_gen = cast(AsyncGenerator[T, Any], injectable_func(*args, **kwargs))
+        return run_coroutine_sync(anext(async_gen))
 
     if inspect.isgeneratorfunction(func):
         # Handle sync generator
-        gen = injectable_func()  # type: ignore[call-arg]
-        return cast(T, next(gen))  # type: ignore[call-overload]
+        gen = cast(Generator[T, Any, Any], injectable_func(*args, **kwargs))
+        return next(gen)
 
     if inspect.iscoroutinefunction(func):
         # Handle coroutine
-        return run_coroutine_sync(injectable_func())  # type: ignore[call-arg, arg-type]
+        coro = cast(Coroutine[Any, Any, T], injectable_func(*args, **kwargs))
+        return run_coroutine_sync(coro)
 
     # Handle regular function
-    return cast(T, injectable_func())  # type: ignore[call-arg]
+    return cast(T, injectable_func(*args, **kwargs))
 
 
 async def cleanup_exit_stack_of_func(func: Callable[..., Any], *, raise_exception: bool = False) -> None:

@@ -53,7 +53,7 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_
         yield capital
         capital.cleanup()
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
@@ -90,7 +90,7 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
         yield capital
         capital.cleanup()
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
@@ -127,7 +127,7 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
         yield capital
         capital.cleanup()
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
@@ -203,11 +203,11 @@ async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_1: Country = get_injected_obj(get_country, use_cache=False)
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_2: Country = get_injected_obj(get_country, use_cache=False)
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 
@@ -239,11 +239,11 @@ async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_clea
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_1: Country = get_injected_obj(get_country, use_cache=False)
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_2: Country = get_injected_obj(get_country, use_cache=False)
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 
@@ -272,11 +272,11 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit
         yield capital
         capital.cleanup()
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
@@ -296,7 +296,7 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit
     assert country_1.capital is not country_2.capital is not another_country_1.capital
     assert country_1.capital.mayor is not country_2.capital.mayor is not another_country_1.capital.mayor
 
-    run_coroutine_sync(cleanup_exit_stack_of_func(get_country))  # type: ignore  # noqa: PGH003
+    run_coroutine_sync(cleanup_exit_stack_of_func(get_country))
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -326,11 +326,11 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
         yield capital
         capital.cleanup()
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
@@ -350,7 +350,7 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
     assert country_1.capital is not country_2.capital is not another_country_1.capital
     assert country_1.capital.mayor is not country_2.capital.mayor is not another_country_1.capital.mayor
 
-    await cleanup_exit_stack_of_func(get_country)  # type: ignore  # noqa: PGH003
+    await cleanup_exit_stack_of_func(get_country)
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -380,11 +380,11 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
         yield capital
         capital.cleanup()
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    @injectable(use_cache=False)  # type: ignore[arg-type]
+    @injectable(use_cache=False)
     def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
@@ -404,7 +404,7 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
     assert country_1.capital is not country_2.capital
     assert country_1.capital.mayor is not country_2.capital.mayor
 
-    await cleanup_exit_stack_of_func(get_country)  # type: ignore  # noqa: PGH003
+    await cleanup_exit_stack_of_func(get_country)
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -492,11 +492,11 @@ async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by
     def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_1: Country = get_injected_obj(get_country, use_cache=False)
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_2: Country = get_injected_obj(get_country, use_cache=False)
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 
@@ -544,11 +544,11 @@ async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_clea
     def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_1: Country = get_injected_obj(get_country, use_cache=False)
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = get_injected_obj(get_country, use_cache=False)  # type: ignore  # noqa: PGH003
+    country_2: Country = get_injected_obj(get_country, use_cache=False)
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 

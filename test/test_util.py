@@ -1,5 +1,6 @@
 import signal
 from collections.abc import AsyncGenerator, Generator
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -14,7 +15,9 @@ from src.fastapi_injectable.util import (
 
 
 class DummyDependency:
-    pass
+    def __init__(self, attr_1: int | None = None, attr_2: str | None = None) -> None:
+        self.attr_1 = attr_1
+        self.attr_2 = attr_2
 
 
 def dummy_get_dependency() -> DummyDependency:
@@ -65,7 +68,7 @@ def test_get_injected_obj_async(mock_injectable: Mock, mock_run_coroutine_sync: 
     mock_injectable.return_value = lambda: DummyDependency()
     mock_run_coroutine_sync.return_value = DummyDependency()
 
-    result: DummyDependency = get_injected_obj(dummy_async_get_dependency)  # type: ignore  # noqa: PGH003
+    result: DummyDependency = get_injected_obj(dummy_async_get_dependency)
 
     mock_injectable.assert_called_once_with(dummy_async_get_dependency, use_cache=True, raise_exception=False)
     assert isinstance(result, DummyDependency)
@@ -79,7 +82,7 @@ async def test_get_injected_obj_async_generator(mock_injectable: Mock, mock_run_
     mock_injectable.return_value = lambda: dummy_async_gen_dependency()
     mock_run_coroutine_sync.return_value = DummyDependency()
 
-    result: DummyDependency = get_injected_obj(dummy_async_gen_dependency)  # type: ignore[arg-type]
+    result: DummyDependency = get_injected_obj(dummy_async_gen_dependency)
 
     mock_injectable.assert_called_once_with(dummy_async_gen_dependency, use_cache=True, raise_exception=False)
     assert isinstance(result, DummyDependency)
@@ -91,11 +94,83 @@ def test_get_injected_obj_sync_generator(mock_injectable: Mock, mock_run_corouti
         yield DummyDependency()
 
     mock_injectable.return_value = lambda: dummy_gen_dependency()
-    result: DummyDependency = get_injected_obj(dummy_gen_dependency)  # type: ignore[arg-type]
+    result: DummyDependency = get_injected_obj(dummy_gen_dependency)
 
     mock_injectable.assert_called_once_with(dummy_gen_dependency, use_cache=True, raise_exception=False)
     assert isinstance(result, DummyDependency)
     mock_run_coroutine_sync.assert_not_called()
+
+
+def test_get_injected_obj_with_args(mock_injectable: Mock, mock_run_coroutine_sync: Mock) -> None:
+    mock_injectable.return_value = lambda *args, **kwargs: DummyDependency(*args, **kwargs)
+    result = get_injected_obj(dummy_get_dependency, args=[42, "test"])
+
+    mock_injectable.assert_called_once_with(dummy_get_dependency, use_cache=True, raise_exception=False)
+    assert result.attr_1 == 42
+    assert result.attr_2 == "test"
+    mock_run_coroutine_sync.assert_not_called()
+
+
+def test_get_injected_obj_with_kwargs(mock_injectable: Mock, mock_run_coroutine_sync: Mock) -> None:
+    mock_injectable.return_value = lambda *args, **kwargs: DummyDependency(*args, **kwargs)
+    result = get_injected_obj(dummy_get_dependency, kwargs={"attr_1": 42, "attr_2": "test"})
+
+    mock_injectable.assert_called_once_with(dummy_get_dependency, use_cache=True, raise_exception=False)
+    assert result.attr_1 == 42
+    assert result.attr_2 == "test"
+    mock_run_coroutine_sync.assert_not_called()
+
+
+def test_get_injected_obj_with_args_and_kwargs(mock_injectable: Mock, mock_run_coroutine_sync: Mock) -> None:
+    mock_injectable.return_value = lambda *args, **kwargs: DummyDependency(*args, **kwargs)
+    result = get_injected_obj(dummy_get_dependency, args=[42], kwargs={"attr_2": "test"})
+
+    mock_injectable.assert_called_once_with(dummy_get_dependency, use_cache=True, raise_exception=False)
+    assert result.attr_1 == 42
+    assert result.attr_2 == "test"
+    mock_run_coroutine_sync.assert_not_called()
+
+
+async def test_get_injected_obj_async_with_args_kwargs(mock_injectable: Mock, mock_run_coroutine_sync: Mock) -> None:
+    mock_injectable.return_value = lambda *args, **kwargs: DummyDependency(*args, **kwargs)
+    mock_run_coroutine_sync.return_value = DummyDependency(attr_1=42, attr_2="test")
+
+    result = get_injected_obj(dummy_async_get_dependency, args=[42], kwargs={"attr_2": "test"})
+
+    mock_injectable.assert_called_once_with(dummy_async_get_dependency, use_cache=True, raise_exception=False)
+    assert result.attr_1 == 42
+    assert result.attr_2 == "test"
+    mock_run_coroutine_sync.assert_called_once()
+
+
+def test_get_injected_obj_sync_generator_with_args_kwargs(mock_injectable: Mock, mock_run_coroutine_sync: Mock) -> None:
+    def dummy_gen_with_args(*args: Any, **kwargs: Any) -> Generator[DummyDependency, None, None]:  # noqa: ANN401
+        yield DummyDependency(*args, **kwargs)
+
+    mock_injectable.return_value = lambda *args, **kwargs: dummy_gen_with_args(*args, **kwargs)
+    result = get_injected_obj(dummy_gen_with_args, args=[42], kwargs={"attr_2": "test"})
+
+    mock_injectable.assert_called_once_with(dummy_gen_with_args, use_cache=True, raise_exception=False)
+    assert result.attr_1 == 42
+    assert result.attr_2 == "test"
+    mock_run_coroutine_sync.assert_not_called()
+
+
+async def test_get_injected_obj_async_generator_with_args_kwargs(
+    mock_injectable: Mock, mock_run_coroutine_sync: Mock
+) -> None:
+    async def dummy_async_gen_with_args(*args: Any, **kwargs: Any) -> AsyncGenerator[DummyDependency, None]:  # noqa: ANN401
+        yield DummyDependency(*args, **kwargs)
+
+    mock_injectable.return_value = lambda *args, **kwargs: dummy_async_gen_with_args(*args, **kwargs)
+    mock_run_coroutine_sync.return_value = DummyDependency(attr_1=42, attr_2="test")
+
+    result = get_injected_obj(dummy_async_gen_with_args, args=[42], kwargs={"attr_2": "test"})
+
+    mock_injectable.assert_called_once_with(dummy_async_gen_with_args, use_cache=True, raise_exception=False)
+    assert result.attr_1 == 42
+    assert result.attr_2 == "test"
+    mock_run_coroutine_sync.assert_called_once()
 
 
 async def test_cleanup_exit_stack_of_func(mock_async_exit_stack_manager: Mock) -> None:

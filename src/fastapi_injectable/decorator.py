@@ -1,7 +1,7 @@
 import inspect
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Generator
 from functools import wraps
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast, overload
 
 from .concurrency import run_coroutine_sync
 from .main import resolve_dependencies
@@ -17,6 +17,32 @@ else:
 
     def set_original_func(wrapper: Any, target: Any) -> None:  # noqa: ANN401
         wrapper.__original_func__ = target
+
+
+@overload
+def injectable(
+    func: Callable[P, T],
+    *,
+    use_cache: bool = True,
+    raise_exception: bool = False,
+) -> Callable[P, T]: ...
+
+
+@overload
+def injectable(
+    func: Callable[P, Generator[T, Any, Any]],
+    *,
+    use_cache: bool = True,
+    raise_exception: bool = False,
+) -> Callable[P, T]: ...
+
+
+@overload
+def injectable(
+    *,
+    use_cache: bool = True,
+    raise_exception: bool = False,
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
 def injectable(
