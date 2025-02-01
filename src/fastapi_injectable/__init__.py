@@ -1,6 +1,6 @@
 from .decorator import injectable
 from .exception import DependencyResolveError
-from .main import resolve_dependencies
+from .main import register_app, resolve_dependencies
 from .util import (
     cleanup_all_exit_stacks,
     cleanup_exit_stack_of_func,
@@ -16,6 +16,7 @@ __all__ = [
     "clear_dependency_cache",
     "get_injected_obj",
     "injectable",
+    "register_app",
     "resolve_dependencies",
     "setup_graceful_shutdown",
 ]
