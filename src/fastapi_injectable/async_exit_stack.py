@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack
 from typing import Any
 from weakref import WeakKeyDictionary
 
+from .concurrency import loop_manager
 from .exception import DependencyCleanupError
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class AsyncExitStackManager:
         self._lock = asyncio.Lock()
 
     async def get_stack(self, func: Callable[..., Any]) -> AsyncExitStack:
-        """Retrieve or create a stack for managing async resources.
+        """Retrieve or create a stack and loop for managing async resources.
 
         Args:
             func: The function to associate with an exit stack
@@ -40,7 +41,7 @@ class AsyncExitStackManager:
             DependencyCleanupError: When cleanup fails and raise_exception is True
         """
         if not self._stacks:
-            return
+            return  # pragma: no cover
 
         original_func = getattr(func, "__original_func__", func)
 
@@ -50,12 +51,12 @@ class AsyncExitStackManager:
                 return  # pragma: no cover
 
             try:
-                await stack.aclose()
-            except Exception as e:
+                await loop_manager.run_in_loop(stack.aclose())
+            except Exception as e:  # pragma: no cover
                 msg = f"Failed to cleanup stack for {func.__name__}"
                 if raise_exception:
                     raise DependencyCleanupError(msg) from e
-                logger.exception(msg)  # pragma: no cover
+                logger.exception(msg)
 
     async def cleanup_all_stacks(self, *, raise_exception: bool = False) -> None:
         """Clean up all stacks.
@@ -77,8 +78,8 @@ class AsyncExitStackManager:
                 return  # pragma: no cover
 
             try:
-                await asyncio.gather(*tasks)
-            except Exception as e:
+                await loop_manager.run_in_loop(asyncio.gather(*tasks))
+            except Exception as e:  # pragma: no cover
                 msg = "Failed to cleanup one or more dependency stacks"
                 if raise_exception:
                     raise DependencyCleanupError(msg) from e

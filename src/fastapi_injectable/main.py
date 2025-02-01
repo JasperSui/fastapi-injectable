@@ -6,9 +6,9 @@ from typing import Any, ParamSpec, TypeVar, cast
 from fastapi import FastAPI, Request
 from fastapi.dependencies.utils import get_dependant, solve_dependencies
 
+from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
 from .exception import DependencyResolveError
-from .manager import async_exit_stack_manager
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")

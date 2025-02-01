@@ -4,10 +4,10 @@ import signal
 from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
 from typing import Any, ParamSpec, TypeVar, cast, overload
 
+from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
 from .concurrency import run_coroutine_sync
 from .decorator import injectable
-from .manager import async_exit_stack_manager
 
 T = TypeVar("T")
 P = ParamSpec("P")
