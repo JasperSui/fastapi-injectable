@@ -1,8 +1,9 @@
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar, cast
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.dependencies.utils import get_dependant, solve_dependencies
 
 from .cache import dependency_cache
@@ -12,6 +13,20 @@ from .manager import async_exit_stack_manager
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
 P = ParamSpec("P")
+_app: FastAPI | None = None
+_app_lock = asyncio.Lock()
+
+
+async def register_app(app: FastAPI) -> None:
+    """Register the given FastAPI app for constructing fake request later."""
+    global _app  # noqa: PLW0603
+    async with _app_lock:
+        _app = app
+
+
+def _get_app() -> FastAPI | None:
+    """Get the registered FastAPI app."""
+    return _app
 
 
 async def resolve_dependencies(
@@ -40,7 +55,15 @@ async def resolve_dependencies(
         - Dependency resolution errors are either logged or raised as exceptions based on `raise_exception`.
     """
     root_dep = get_dependant(path="command", call=func)
-    fake_request = Request({"type": "http", "headers": [], "query_string": ""})
+    fake_request_scope: dict[str, Any] = {
+        "type": "http",
+        "headers": [],
+        "query_string": "",
+    }
+    app = _get_app()
+    if app is not None:
+        fake_request_scope["app"] = app
+    fake_request = Request(fake_request_scope)
     root_dep.call = cast(Callable[..., Any], root_dep.call)
     async_exit_stack = await async_exit_stack_manager.get_stack(root_dep.call)
     cache = dependency_cache.get() if use_cache else None

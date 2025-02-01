@@ -326,6 +326,58 @@ setup_graceful_shutdown(
     raise_exception=True
 )
 ```
+
+
+### App Registration for State Access
+
+If your dependencies need access to the FastAPI app state (like database connections or other services), you can register your app with `fastapi-injectable`:
+
+```python
+from fastapi import FastAPI, Request, Depends
+from fastapi_injectable import injectable, register_app
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
+# Define your dependencies that need app state access
+def get_db_engine(*, request: Request) -> AsyncEngine:
+    return request.app.state.db_engine
+
+DBEngine = Annotated[AsyncEngine, Depends(get_db_engine)]
+
+async def get_db(*, db_engine: DBEngine) -> AsyncIterator[AsyncSession]:
+    session = async_sessionmaker(db_engine)
+    async with session.begin() as session:
+        yield session
+
+DB = Annotated[AsyncSession, Depends(get_db)]
+
+# Register your app during startup
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Register the app so dependencies can access app.state
+    await register_app(app)
+
+    # Setup your app state
+    app.state.db_engine = create_async_engine("postgresql+asyncpg://...")
+    yield
+    await app.state.db_engine.dispose()
+
+app = FastAPI(lifespan=lifespan)
+
+# Now you can use dependencies that need app state anywhere!
+@injectable
+async def process_data(db: DB) -> str:
+    result = await db.execute(...)
+    return result
+
+# Use it in background tasks, CLI tools, etc.
+result = await process_data()
+```
+
+This is particularly useful when:
+- Your dependencies need access to shared services in `app.state`
+- You're using third-party libraries that call your code internally
+- You want to maintain a single source of truth for long-running services
+
 <!-- usage-end -->
 
 ## Advanced Scenarios
@@ -379,15 +431,39 @@ Please refer to the [Real-world Examples](https://fastapi-injectable.readthedocs
 
 <!-- faq-begin -->
 
-- [Why would I need this package?](#why-would-i-need-this-package)
-- [Why not directly use other DI packages like Dependency Injector or FastDepends?](#why-not-directly-use-other-di-packages-like-dependency-injector-or-fastdepends)
-- [Can I use it with existing FastAPI dependencies?](#can-i-use-it-with-existing-fastapi-dependencies)
-- [Does it work with all FastAPI dependency types?](#does-it-work-with-all-fastapi-dependency-types)
-- [What happens to dependency cleanup in long-running processes?](#what-happens-to-dependency-cleanup-in-long-running-processes)
-- [Can I mix sync and async dependencies?](#can-i-mix-sync-and-async-dependencies)
-- [Are type hints fully supported for `injectable()` and `get_injected_obj()`?](#are-type-hints-fully-supported-for-injectable-and-get_injected_obj)
-- [How does caching work?](#how-does-caching-work)
-- [Is it production-ready?](#is-it-production-ready)
+- [Basic Example](#basic-example)
+- [Key Features](#key-features)
+- [Overview](#overview)
+  - [Requirements](#requirements)
+- [Usage](#usage)
+  - [Basic Injection](#basic-injection)
+  - [Function-based Approach](#function-based-approach)
+  - [Generator Dependencies with Cleanup](#generator-dependencies-with-cleanup)
+  - [Async Support](#async-support)
+  - [Dependency Caching Control](#dependency-caching-control)
+  - [Graceful Shutdown](#graceful-shutdown)
+  - [App Registration for State Access](#app-registration-for-state-access)
+- [Advanced Scenarios](#advanced-scenarios)
+  - [1. `test_injectable.py` - Shows all possible combinations of:](#1-test_injectablepy---shows-all-possible-combinations-of)
+  - [2. `test_integration.py` - Demonstrates:](#2-test_integrationpy---demonstrates)
+- [Real-world Examples](#real-world-examples)
+  - [1. Processing messages by background worker with `Depends()`](#1-processing-messages-by-background-worker-with-depends)
+- [Frequently Asked Questions](#frequently-asked-questions)
+  - [Why would I need this package?](#why-would-i-need-this-package)
+  - [Why not directly use other DI packages like Dependency Injector or FastDepends?](#why-not-directly-use-other-di-packages-like-dependency-injector-or-fastdepends)
+  - [Can I use it with existing FastAPI dependencies?](#can-i-use-it-with-existing-fastapi-dependencies)
+  - [Does it work with all FastAPI dependency types?](#does-it-work-with-all-fastapi-dependency-types)
+  - [What happens to dependency cleanup in long-running processes?](#what-happens-to-dependency-cleanup-in-long-running-processes)
+  - [Can I mix sync and async dependencies?](#can-i-mix-sync-and-async-dependencies)
+  - [Are type hints fully supported for `injectable()` and `get_injected_obj()`?](#are-type-hints-fully-supported-for-injectable-and-get_injected_obj)
+  - [How does caching work?](#how-does-caching-work)
+  - [Is it production-ready?](#is-it-production-ready)
+- [Contributing](#contributing)
+- [License](#license)
+- [Issues](#issues)
+- [Credits](#credits)
+- [Related Issue \& Discussion](#related-issue--discussion)
+- [Bonus](#bonus)
 
 
 ### Why would I need this package?

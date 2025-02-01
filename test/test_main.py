@@ -2,8 +2,9 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi import FastAPI
 
-from src.fastapi_injectable.main import DependencyResolveError, resolve_dependencies
+from src.fastapi_injectable.main import DependencyResolveError, register_app, resolve_dependencies
 
 
 class DummyDependency:
@@ -34,6 +35,30 @@ def mock_async_exit_stack_manager() -> Generator[Mock, None, None]:
     with patch("src.fastapi_injectable.main.async_exit_stack_manager") as mock:
         mock.get_stack = AsyncMock()
         yield mock
+
+
+@pytest.fixture
+def mock_app_lock() -> Generator[Mock, None, None]:
+    with patch("src.fastapi_injectable.main._app_lock") as mock:
+        mock.__aenter__ = AsyncMock()
+        mock.__aexit__ = AsyncMock()
+        yield mock
+
+
+@pytest.fixture
+def mock_get_app() -> Generator[Mock, None, None]:
+    with patch("src.fastapi_injectable.main._get_app") as mock:
+        mock.return_value = Mock(spec=FastAPI)
+        yield mock
+
+
+async def test_register_app(mock_app_lock: Mock) -> None:
+    app = Mock(spec=FastAPI)
+
+    await register_app(app)
+
+    mock_app_lock.__aenter__.assert_awaited_once()
+    mock_app_lock.__aexit__.assert_awaited_once()
 
 
 async def test_resolve_dependencies_no_dependencies(
@@ -124,6 +149,25 @@ async def test_resolve_dependencies_raise_exception_on_error(
 
     with pytest.raises(DependencyResolveError):
         await resolve_dependencies(func, raise_exception=True)
+
+
+async def test_resolve_dependencies_with_registered_app(
+    mock_solve_dependencies: AsyncMock,
+    mock_get_dependant: Mock,
+    mock_dependency_cache: Mock,
+    mock_async_exit_stack_manager: Mock,
+    mock_get_app: Mock,
+) -> None:
+    mock_solve_dependencies.return_value = AsyncMock(values={}, dependency_cache={})
+
+    def func() -> None:
+        return None
+
+    await resolve_dependencies(func)
+
+    # Verify app was included in request scope
+    called_args = mock_solve_dependencies.call_args[1]
+    assert called_args["request"].scope["app"] == mock_get_app.return_value
 
 
 async def test_resolve_dependencies_log_warning_on_error(
