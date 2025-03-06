@@ -1,5 +1,4 @@
 from .decorator import injectable
-from .exception import DependencyResolveError
 from .main import register_app, resolve_dependencies
 from .util import (
     cleanup_all_exit_stacks,
@@ -10,7 +9,6 @@ from .util import (
 )
 
 __all__ = [
-    "DependencyResolveError",
     "cleanup_all_exit_stacks",
     "cleanup_exit_stack_of_func",
     "clear_dependency_cache",

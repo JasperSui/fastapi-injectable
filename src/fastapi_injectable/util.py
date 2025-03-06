@@ -20,7 +20,6 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> T: ...
 
 
@@ -31,7 +30,6 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> T: ...
 
 
@@ -42,7 +40,6 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> T: ...
 
 
@@ -53,7 +50,6 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> T: ...
 
 
@@ -68,7 +64,6 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> T:
     """Get an injected object from a dependency function with FastAPI's dependency injection.
 
@@ -84,8 +79,6 @@ def get_injected_obj(
         args: Positional arguments to pass to the dependency function.
         kwargs: Keyword arguments to pass to the dependency function.
         use_cache: Whether to cache resolved dependencies. Defaults to True.
-        raise_exception: Whether to raise exceptions during dependency resolution.
-            If False, exceptions are logged as warnings. Defaults to False.
 
     Returns:
         The first value yielded/returned by the dependency function after injection.
@@ -118,7 +111,7 @@ def get_injected_obj(
         - Cleanup code in generators will be executed when calling cleanup functions
         - Uses FastAPI's dependency injection system under the hood
     """
-    injectable_func = injectable(func, use_cache=use_cache, raise_exception=raise_exception)
+    injectable_func = injectable(func, use_cache=use_cache)
 
     if args is None:
         args = []

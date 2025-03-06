@@ -8,7 +8,6 @@ from fastapi.dependencies.utils import get_dependant, solve_dependencies
 
 from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
-from .exception import DependencyResolveError
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -30,7 +29,7 @@ def _get_app() -> FastAPI | None:
 
 
 async def resolve_dependencies(
-    func: Callable[P, T] | Callable[P, Awaitable[T]], *, use_cache: bool = True, raise_exception: bool = False
+    func: Callable[P, T] | Callable[P, Awaitable[T]], *, use_cache: bool = True
 ) -> dict[str, Any]:
     """Resolve dependencies for the given function using FastAPI's dependency injection system.
 
@@ -41,20 +40,18 @@ async def resolve_dependencies(
         func: The function for which dependencies need to be resolved. It can be a synchronous
             or asynchronous callable.
         use_cache: Whether to use a cache for dependency resolution. Defaults to True.
-        raise_exception: Whether to raise an exception when errors occur during dependency
-            resolution. If False, errors are logged as warnings. Defaults to False.
 
     Returns:
         A dictionary mapping argument names to resolved dependency values.
 
-    Raises:
-        DependencyResolveError: If `raise_exception` is True and errors occur during dependency resolution.
-
     Notes:
         - A fake HTTP request is created to mimic FastAPI's request-based dependency resolution.
-        - Dependency resolution errors are either logged or raised as exceptions based on `raise_exception`.
     """
     root_dep = get_dependant(path="command", call=func)
+
+    # Get names of actual dependency (Depends()) parameters
+    dependency_names = {param.name for param in root_dep.dependencies if param.name}
+
     fake_request_scope: dict[str, Any] = {
         "type": "http",
         "headers": [],
@@ -67,7 +64,7 @@ async def resolve_dependencies(
     root_dep.call = cast(Callable[..., Any], root_dep.call)
     async_exit_stack = await async_exit_stack_manager.get_stack(root_dep.call)
     cache = dependency_cache.get() if use_cache else None
-    resolved = await solve_dependencies(
+    solved_dependency = await solve_dependencies(
         request=fake_request,
         dependant=root_dep,
         async_exit_stack=async_exit_stack,
@@ -75,10 +72,8 @@ async def resolve_dependencies(
         dependency_cache=cache,
     )
     if cache is not None:
-        cache.update(resolved.dependency_cache)
-    if resolved.errors:
-        if raise_exception:
-            raise DependencyResolveError(resolved.errors)
-        logger.warning(f"Something wrong when resolving dependencies of {func}, errors: {resolved.errors}")
+        cache.update(solved_dependency.dependency_cache)
 
-    return resolved.values
+    return {
+        param_name: value for param_name, value in solved_dependency.values.items() if param_name in dependency_names
+    }

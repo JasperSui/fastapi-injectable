@@ -1,10 +1,11 @@
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
 
-from src.fastapi_injectable.main import DependencyResolveError, register_app, resolve_dependencies
+from src.fastapi_injectable.main import register_app, resolve_dependencies
 
 
 class DummyDependency:
@@ -79,20 +80,73 @@ async def test_resolve_dependencies_no_dependencies(
     assert dependencies == {}
 
 
-async def test_resolve_dependencies_with_dependencies(
+async def test_resolve_dependencies_with_only_dependencies(
     mock_solve_dependencies: AsyncMock,
     mock_get_dependant: Mock,
     mock_dependency_cache: Mock,
     mock_async_exit_stack_manager: Mock,
 ) -> None:
-    mock_solve_dependencies.return_value = AsyncMock(values={"dep": DummyDependency()}, dependency_cache={})
+    dependency_param_name = "dep"
+    mock_dependant_dependency = Mock()
+    mock_dependant_dependency.name = dependency_param_name
+    mock_get_dependant.return_value.dependencies = [
+        mock_dependant_dependency,
+    ]
+    mock_solve_dependencies.return_value = AsyncMock(
+        values={dependency_param_name: DummyDependency()}, dependency_cache={dependency_param_name: DummyDependency()}
+    )
 
     def func(dep: DummyDependency) -> None:
         return None
 
     dependencies = await resolve_dependencies(func)
 
-    assert dependencies == {"dep": mock_solve_dependencies.return_value.values["dep"]}
+    assert dependencies == {dependency_param_name: mock_solve_dependencies.return_value.values[dependency_param_name]}
+
+
+async def test_resolve_dependencies_with_non_dependency_parameters(
+    mock_solve_dependencies: AsyncMock,
+    mock_get_dependant: Mock,
+    mock_dependency_cache: Mock,
+    mock_async_exit_stack_manager: Mock,
+) -> None:
+    mock_get_dependant.return_value.dependencies = []
+    mock_solve_dependencies.return_value = AsyncMock(values={}, dependency_cache={})
+
+    def func(basic_str: str, basic_int: int, basic_bool: bool, basic_dict: dict[str, Any]) -> None:
+        return None
+
+    dependencies = await resolve_dependencies(func)
+
+    assert dependencies == {}
+
+
+async def test_resolve_dependencies_with_non_dependency_parameters_and_dependencies(
+    mock_solve_dependencies: AsyncMock,
+    mock_get_dependant: Mock,
+    mock_dependency_cache: Mock,
+    mock_async_exit_stack_manager: Mock,
+) -> None:
+    dependency_param_name = "dep"
+    mock_dependant_dependency = Mock()
+    mock_dependant_dependency.name = dependency_param_name
+    mock_get_dependant.return_value.dependencies = [
+        mock_dependant_dependency,
+    ]
+    mock_solve_dependencies.return_value = AsyncMock(
+        values={dependency_param_name: DummyDependency()}, dependency_cache={dependency_param_name: DummyDependency()}
+    )
+
+    def func(
+        basic_str: str, basic_int: int, basic_bool: bool, basic_dict: dict[str, Any], dep: DummyDependency
+    ) -> None:
+        return None
+
+    dependencies = await resolve_dependencies(func)
+
+    assert dependencies == {
+        dependency_param_name: mock_solve_dependencies.return_value.values[dependency_param_name],
+    }
 
 
 async def test_resolve_dependencies_with_cache(
@@ -101,8 +155,16 @@ async def test_resolve_dependencies_with_cache(
     mock_dependency_cache: Mock,
     mock_async_exit_stack_manager: Mock,
 ) -> None:
+    dependency_param_name = "dep"
+    mock_dependant_dependency = Mock()
+    mock_dependant_dependency.name = dependency_param_name
+    mock_get_dependant.return_value.dependencies = [
+        mock_dependant_dependency,
+    ]
     dep_obj = DummyDependency()
-    mock_solve_dependencies.return_value = AsyncMock(values={"dep": dep_obj}, dependency_cache={"dep": dep_obj})
+    mock_solve_dependencies.return_value = AsyncMock(
+        values={dependency_param_name: dep_obj}, dependency_cache={dependency_param_name: dep_obj}
+    )
 
     def func(dep: DummyDependency) -> None:
         return None
@@ -112,8 +174,8 @@ async def test_resolve_dependencies_with_cache(
 
     mock_dependency_cache.get.assert_called_once()
     mock_solve_dependencies.assert_awaited_once()
-    assert dependencies == {"dep": mock_solve_dependencies.return_value.values["dep"]}
-    mock_dependency_cache.get.return_value.update.assert_called_once_with({"dep": dep_obj})
+    assert dependencies == {dependency_param_name: mock_solve_dependencies.return_value.values[dependency_param_name]}
+    mock_dependency_cache.get.return_value.update.assert_called_once_with({dependency_param_name: dep_obj})
 
 
 async def test_resolve_dependencies_without_cache(
@@ -122,8 +184,14 @@ async def test_resolve_dependencies_without_cache(
     mock_dependency_cache: Mock,
     mock_async_exit_stack_manager: Mock,
 ) -> None:
+    dependency_param_name = "dep"
+    mock_dependant_dependency = Mock()
+    mock_dependant_dependency.name = dependency_param_name
+    mock_get_dependant.return_value.dependencies = [
+        mock_dependant_dependency,
+    ]
     mock_solve_dependencies.return_value = AsyncMock(
-        values={"dep": DummyDependency()}, dependency_cache={"dep": DummyDependency()}
+        values={dependency_param_name: DummyDependency()}, dependency_cache={dependency_param_name: DummyDependency()}
     )
 
     def func(dep: DummyDependency) -> None:
@@ -133,22 +201,7 @@ async def test_resolve_dependencies_without_cache(
 
     mock_dependency_cache.get.assert_not_called()
     mock_solve_dependencies.assert_awaited_once()
-    assert dependencies == {"dep": mock_solve_dependencies.return_value.values["dep"]}
-
-
-async def test_resolve_dependencies_raise_exception_on_error(
-    mock_solve_dependencies: AsyncMock,
-    mock_get_dependant: Mock,
-    mock_dependency_cache: Mock,
-    mock_async_exit_stack_manager: Mock,
-) -> None:
-    mock_solve_dependencies.return_value = AsyncMock(errors=["Error"], values={}, dependency_cache={})
-
-    def func() -> None:
-        return None
-
-    with pytest.raises(DependencyResolveError):
-        await resolve_dependencies(func, raise_exception=True)
+    assert dependencies == {dependency_param_name: mock_solve_dependencies.return_value.values[dependency_param_name]}
 
 
 async def test_resolve_dependencies_with_registered_app(
@@ -168,22 +221,3 @@ async def test_resolve_dependencies_with_registered_app(
     # Verify app was included in request scope
     called_args = mock_solve_dependencies.call_args[1]
     assert called_args["request"].scope["app"] == mock_get_app.return_value
-
-
-async def test_resolve_dependencies_log_warning_on_error(
-    mock_solve_dependencies: AsyncMock,
-    mock_get_dependant: Mock,
-    mock_dependency_cache: Mock,
-    mock_async_exit_stack_manager: Mock,
-) -> None:
-    mock_solve_dependencies.return_value = AsyncMock(errors=["Error"], values={}, dependency_cache={})
-
-    def func() -> None:
-        return None
-
-    with patch("src.fastapi_injectable.main.logger") as mock_logger:
-        dependencies = await resolve_dependencies(func, raise_exception=False)
-        mock_logger.warning.assert_called_once_with(
-            f"Something wrong when resolving dependencies of {func}, errors: {mock_solve_dependencies.return_value.errors}"  # noqa: E501
-        )
-        assert dependencies == {}
