@@ -1,5 +1,5 @@
 from collections.abc import AsyncGenerator, Generator
-from typing import Annotated
+from typing import Annotated, Any
 
 import pytest
 from fastapi import Depends
@@ -575,3 +575,32 @@ async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_clea
 
     assert another_country_1.capital._is_cleaned_up is True
     assert another_country_1.capital.mayor._is_cleaned_up is True
+
+
+def test_function_with_non_dependency_parameters_and_dependencies_be_resolved_correctly() -> None:
+    def get_mayor() -> Generator[Mayor, None, None]:
+        mayor = Mayor()
+        yield mayor
+        mayor.cleanup()
+
+    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Generator[Capital, None, None]:
+        capital = Capital(mayor)
+        yield capital
+        capital.cleanup()
+
+    @injectable(use_cache=False)
+    def get_country(
+        basic_str: str,
+        basic_int: int,
+        basic_bool: bool,
+        basic_dict: dict[str, Any],
+        capital: Annotated[Capital, Depends(get_capital)],
+    ) -> Country:
+        assert isinstance(basic_str, str)
+        assert isinstance(basic_int, int)
+        assert isinstance(basic_bool, bool)
+        assert isinstance(basic_dict, dict)
+        return Country(capital)
+
+    country: Country = get_country(basic_str="basic_str", basic_int=1, basic_bool=True, basic_dict={"key": "value"})  # type: ignore  # noqa: PGH003
+    assert country is not None

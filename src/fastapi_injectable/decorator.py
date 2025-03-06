@@ -24,7 +24,6 @@ def injectable(
     func: Callable[P, T],
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> Callable[P, T]: ...
 
 
@@ -33,7 +32,6 @@ def injectable(
     func: Callable[P, Generator[T, Any, Any]],
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> Callable[P, T]: ...
 
 
@@ -41,7 +39,6 @@ def injectable(
 def injectable(
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
@@ -49,7 +46,6 @@ def injectable(
     func: Callable[P, T] | Callable[P, Awaitable[T]] | None = None,
     *,
     use_cache: bool = True,
-    raise_exception: bool = False,
 ) -> (
     Callable[P, T]
     | Callable[P, Awaitable[T]]
@@ -64,14 +60,12 @@ def injectable(
 
         @wraps(target)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            dependencies = await resolve_dependencies(func=target, use_cache=use_cache, raise_exception=raise_exception)
+            dependencies = await resolve_dependencies(func=target, use_cache=use_cache)
             return await cast(Callable[..., Coroutine[Any, Any, T]], target)(*args, **{**dependencies, **kwargs})
 
         @wraps(target)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            dependencies = run_coroutine_sync(
-                resolve_dependencies(func=target, use_cache=use_cache, raise_exception=raise_exception)
-            )
+            dependencies = run_coroutine_sync(resolve_dependencies(func=target, use_cache=use_cache))
             return cast(Callable[..., T], target)(*args, **{**dependencies, **kwargs})
 
         if is_async:
