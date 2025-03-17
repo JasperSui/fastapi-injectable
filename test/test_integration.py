@@ -77,7 +77,7 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_
     assert country_2.capital.mayor._is_cleaned_up is True
 
 
-async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
+def test_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
     clean_exit_stack_manager: None,
 ) -> None:
     async def get_mayor() -> AsyncGenerator[Mayor, None]:
@@ -94,11 +94,11 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_1: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_2: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 
@@ -106,7 +106,7 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
     assert country_1.capital is not country_2.capital
     assert country_1.capital.mayor is not country_2.capital.mayor
 
-    await cleanup_all_exit_stacks()
+    run_coroutine_sync(cleanup_all_exit_stacks())
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -114,7 +114,7 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
     assert country_2.capital.mayor._is_cleaned_up is True
 
 
-async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
+def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
     clean_exit_stack_manager: None,
 ) -> None:
     def get_mayor() -> Generator[Mayor, None, None]:
@@ -131,11 +131,11 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_1: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_2: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 
@@ -143,7 +143,7 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
     assert country_1.capital is not country_2.capital
     assert country_1.capital.mayor is not country_2.capital.mayor
 
-    await cleanup_all_exit_stacks()
+    run_coroutine_sync(cleanup_all_exit_stacks())
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -187,7 +187,7 @@ def test_sync_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanu
     assert country_2.capital.mayor._is_cleaned_up is True
 
 
-async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
+def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
     clean_exit_stack_manager: None,
 ) -> None:
     async def get_mayor() -> AsyncGenerator[Mayor, None]:
@@ -215,7 +215,7 @@ async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by
     assert country_1.capital is not country_2.capital
     assert country_1.capital.mayor is not country_2.capital.mayor
 
-    await cleanup_all_exit_stacks()
+    run_coroutine_sync(cleanup_all_exit_stacks())
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -223,7 +223,7 @@ async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by
     assert country_2.capital.mayor._is_cleaned_up is True
 
 
-async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
+def test_sync_and_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_all_exit_stacks(
     clean_exit_stack_manager: None,
 ) -> None:
     def get_mayor() -> Generator[Mayor, None, None]:
@@ -251,7 +251,7 @@ async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_clea
     assert country_1.capital is not country_2.capital
     assert country_1.capital.mayor is not country_2.capital.mayor
 
-    await cleanup_all_exit_stacks()
+    run_coroutine_sync(cleanup_all_exit_stacks())
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -313,7 +313,7 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit
     assert another_country_1.capital.mayor._is_cleaned_up is True
 
 
-async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
+def test_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
     clean_exit_stack_manager: None,
 ) -> None:
     async def get_mayor() -> AsyncGenerator[Mayor, None]:
@@ -334,11 +334,11 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
     def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_1: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_2: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 
@@ -350,7 +350,7 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
     assert country_1.capital is not country_2.capital is not another_country_1.capital
     assert country_1.capital.mayor is not country_2.capital.mayor is not another_country_1.capital.mayor
 
-    await cleanup_exit_stack_of_func(get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(get_country))
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -361,13 +361,13 @@ async def test_async_generators_with_injectable_be_correctly_cleaned_up_by_clean
     assert another_country_1.capital._is_cleaned_up is False
     assert another_country_1.capital.mayor._is_cleaned_up is False
 
-    await cleanup_exit_stack_of_func(another_get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(another_get_country))
 
     assert another_country_1.capital._is_cleaned_up is True
     assert another_country_1.capital.mayor._is_cleaned_up is True
 
 
-async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
+def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
     clean_exit_stack_manager: None,
 ) -> None:
     def get_mayor() -> Generator[Mayor, None, None]:
@@ -388,11 +388,11 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
     def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    country_1: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_1: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_1.capital._is_cleaned_up is False
     assert country_1.capital.mayor._is_cleaned_up is False
 
-    country_2: Country = await get_country()  # type: ignore  # noqa: PGH003
+    country_2: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
     assert country_2.capital._is_cleaned_up is False
     assert country_2.capital.mayor._is_cleaned_up is False
 
@@ -404,7 +404,7 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
     assert country_1.capital is not country_2.capital
     assert country_1.capital.mayor is not country_2.capital.mayor
 
-    await cleanup_exit_stack_of_func(get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(get_country))
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -415,7 +415,7 @@ async def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up
     assert another_country_1.capital._is_cleaned_up is False
     assert another_country_1.capital.mayor._is_cleaned_up is False
 
-    await cleanup_exit_stack_of_func(another_get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(another_get_country))
 
     assert another_country_1.capital._is_cleaned_up is True
     assert another_country_1.capital.mayor._is_cleaned_up is True
@@ -473,7 +473,7 @@ def test_sync_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanu
     assert another_country_1.capital.mayor._is_cleaned_up is True
 
 
-async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
+def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
     clean_exit_stack_manager: None,
 ) -> None:
     async def get_mayor() -> AsyncGenerator[Mayor, None]:
@@ -508,7 +508,7 @@ async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by
     assert country_1.capital is not country_2.capital is not another_country_1.capital
     assert country_1.capital.mayor is not country_2.capital.mayor is not another_country_1.capital.mayor
 
-    await cleanup_exit_stack_of_func(get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(get_country))
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -519,13 +519,13 @@ async def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by
     assert another_country_1.capital._is_cleaned_up is False
     assert another_country_1.capital.mayor._is_cleaned_up is False
 
-    await cleanup_exit_stack_of_func(another_get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(another_get_country))
 
     assert another_country_1.capital._is_cleaned_up is True
     assert another_country_1.capital.mayor._is_cleaned_up is True
 
 
-async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
+def test_sync_and_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanup_exit_stack_of_func(
     clean_exit_stack_manager: None,
 ) -> None:
     def get_mayor() -> Generator[Mayor, None, None]:
@@ -560,7 +560,7 @@ async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_clea
     assert country_1.capital is not country_2.capital is not another_country_1.capital
     assert country_1.capital.mayor is not country_2.capital.mayor is not another_country_1.capital.mayor
 
-    await cleanup_exit_stack_of_func(get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(get_country))
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
@@ -571,7 +571,7 @@ async def test_sync_and_async_generators_with_get_injected_obj_be_correctly_clea
     assert another_country_1.capital._is_cleaned_up is False
     assert another_country_1.capital.mayor._is_cleaned_up is False
 
-    await cleanup_exit_stack_of_func(another_get_country)
+    run_coroutine_sync(cleanup_exit_stack_of_func(another_get_country))
 
     assert another_country_1.capital._is_cleaned_up is True
     assert another_country_1.capital.mayor._is_cleaned_up is True
