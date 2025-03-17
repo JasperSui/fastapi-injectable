@@ -5,7 +5,6 @@ from contextlib import AsyncExitStack
 from typing import Any
 from weakref import WeakKeyDictionary
 
-from .concurrency import loop_manager
 from .exception import DependencyCleanupError
 
 logger = logging.getLogger(__name__)
@@ -51,7 +50,7 @@ class AsyncExitStackManager:
                 return  # pragma: no cover
 
             try:
-                await loop_manager.run_in_loop(stack.aclose())
+                await stack.aclose()
             except Exception as e:  # pragma: no cover
                 msg = f"Failed to cleanup stack for {func.__name__}"
                 if raise_exception:
@@ -78,7 +77,7 @@ class AsyncExitStackManager:
                 return  # pragma: no cover
 
             try:
-                await loop_manager.run_in_loop(asyncio.gather(*tasks))
+                await asyncio.gather(*tasks)
             except Exception as e:  # pragma: no cover
                 msg = "Failed to cleanup one or more dependency stacks"
                 if raise_exception:
