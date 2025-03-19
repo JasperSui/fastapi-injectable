@@ -1,13 +1,12 @@
 import asyncio
-import logging
 from collections.abc import Callable
 from contextlib import AsyncExitStack
 from typing import Any
 from weakref import WeakKeyDictionary
 
+from .concurrency import loop_manager
 from .exception import DependencyCleanupError
-
-logger = logging.getLogger(__name__)
+from .logging import logger
 
 
 class AsyncExitStackManager:
@@ -43,19 +42,30 @@ class AsyncExitStackManager:
             return  # pragma: no cover
 
         original_func = getattr(func, "__original_func__", func)
-
+        exception_: Exception | None = None
         async with self._lock:
             stack = self._stacks.pop(original_func, None)
             if not stack:
                 return  # pragma: no cover
-
             try:
-                await stack.aclose()
-            except Exception as e:  # pragma: no cover
+                if loop_manager.in_loop():
+                    await stack.aclose()
+                else:
+                    loop_manager.run_in_loop(stack.aclose())  # pragma: no cover
+            except RuntimeError as e:  # pragma: no cover
+                msg = (
+                    f"Cannot cleanup stack for {func.__name__} because there is something wrong with the loop. "
+                    "Resources may not be properly released."
+                )
+                logger.warning(msg)
+                exception_ = e
+            except Exception as e:  # noqa: BLE001 # pragma: no cover
                 msg = f"Failed to cleanup stack for {func.__name__}"
-                if raise_exception:
-                    raise DependencyCleanupError(msg) from e
                 logger.exception(msg)
+                exception_ = e
+
+        if exception_ and raise_exception:
+            raise DependencyCleanupError(msg) from exception_  # pragma: no cover
 
     async def cleanup_all_stacks(self, *, raise_exception: bool = False) -> None:
         """Clean up all stacks.
@@ -69,6 +79,7 @@ class AsyncExitStackManager:
         if not self._stacks:
             return
 
+        exception_: Exception | None = None
         async with self._lock:
             tasks = [stack.aclose() for stack in self._stacks.values()]
             self._stacks.clear()
@@ -77,12 +88,24 @@ class AsyncExitStackManager:
                 return  # pragma: no cover
 
             try:
-                await asyncio.gather(*tasks)
-            except Exception as e:  # pragma: no cover
+                if loop_manager.in_loop():
+                    await asyncio.gather(*tasks)
+                else:
+                    loop_manager.run_in_loop(asyncio.gather(*tasks))  # pragma: no cover
+            except RuntimeError as e:  # pragma: no cover
+                msg = (
+                    "Cannot cleanup all stacks because there is something wrong with the loop. "
+                    "Resources may not be properly released."
+                )
+                logger.warning(msg)
+                exception_ = e
+            except Exception as e:  # noqa: BLE001 # pragma: no cover
                 msg = "Failed to cleanup one or more dependency stacks"
-                if raise_exception:
-                    raise DependencyCleanupError(msg) from e
                 logger.exception(msg)
+                exception_ = e
+
+        if exception_ and raise_exception:
+            raise DependencyCleanupError(msg) from exception_  # pragma: no cover
 
 
 async_exit_stack_manager = AsyncExitStackManager()

@@ -69,7 +69,7 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_
     assert country_1.capital is not country_2.capital
     assert country_1.capital.mayor is not country_2.capital.mayor
 
-    run_coroutine_sync(cleanup_all_exit_stacks())
+    run_coroutine_sync(cleanup_all_exit_stacks(raise_exception=True))
 
     assert country_1.capital._is_cleaned_up is True
     assert country_1.capital.mayor._is_cleaned_up is True  # type: ignore[unreachable]
