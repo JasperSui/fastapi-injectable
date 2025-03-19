@@ -74,6 +74,7 @@ print(result) # Output: 'data'
 3. **Resource Management**: Built-in cleanup for dependencies.
 4. **Dependency Caching**: Optional caching for better performance.
 5. **Graceful Shutdown**: Automatic cleanup on program exit.
+6. **Event Loop Management**: Control the event loop to ensure the objects created by `fastapi-injectable` are executed in the right loop.
 
 ## Overview
 
@@ -299,6 +300,119 @@ country_2 = get_country()
 country_3 = get_country()
 assert country_1.capital is not country_2.capital is not country_3.capital
 assert country_1.capital.mayor is not country_2.capital.mayor is not country_3.capital.mayor
+```
+
+### Event Loop Management
+
+`fastapi-injectable` includes a powerful loop management system to handle asynchronous code execution in different contexts. This is particularly useful when working with async code in synchronous environments or when you need controlled event loop execution.
+
+```python
+from fastapi_injectable.concurrency import loop_manager, run_coroutine_sync
+
+# Configure loop strategy
+# Options: "current" (default), "isolated", or "background_thread"
+loop_manager.set_loop_strategy("isolated")
+
+loop = loop_manager.get_loop() # This is useful if you have to aware of the loop, so that you can make sure the objects created by fastapi-injectable are executed in the right loop.
+# asyncio.set_event_loop(loop)
+# loop.run_until_complete(your_coro)
+
+# The run_coroutine_sync function uses loop_manager internally
+# This works regardless of what thread or context you're in
+result = run_coroutine_sync(async_process_data())
+```
+
+
+Loop strategies explained:
+
+1. **`current`** (default): Uses the current thread's event loop. This is the simplest option and meets most needs.
+   - Limitation: Fails if no loop is running in the current thread.
+   - Perfect when your code runs in synchronous functions within the main thread with a runnable event loop.
+
+    ```python
+    # Default strategy - uses the current thread's event loop
+    # Simple and efficient for most use cases
+
+    import asyncio
+
+    my_loop = asyncio.get_event_loop()
+    # Or
+    # my_loop = asyncio.new_event_loop()
+    # asyncio.set_event_loop(my_loop)
+
+    loop_manager.set_loop_strategy("current")
+
+    assert my_loop is loop_manager.get_loop()
+
+    # This will work if you're in the main thread with a running event loop
+    result = run_coroutine_sync(async_process_data())
+    ```
+
+2. **`isolated`**: Creates a separate isolated loop.
+   - Benefit: Works even when no loop is running in the current thread.
+   - Ideal when you need control over the loop lifecycle or need to ensure all injected objects come from the same event loop (important for objects like `aiohttp.ClientSession` that must execute in the same loop where they were instantiated).
+
+    ```python
+    # Isolated strategy - creates a dedicated event loop
+    # Great for scripts, CLI tools, or when you need loop lifecycle control
+
+    import asyncio
+
+    from fastapi_injectable import get_injected_obj
+
+    async def get_aiohttp_session():
+        return aiohttp.ClientSession()
+
+    # Make sure the loop strategy is set to "isolated" before any injected objects are created
+    loop_manager.set_loop_strategy("isolated")
+
+    aiohttp_session = get_injected_obj(get_aiohttp_session)
+
+    original_loop = asyncio.get_event_loop()
+    loop = loop_manager.get_loop()
+
+    assert original_loop is not loop
+
+    original_loop.run_until_complete(aiohttp_session.get("https://www.google.com")) # This will raise an error because the aiohttp_session is created in the loop_manager's loop, not the original_loop.
+
+    loop.run_until_complete(aiohttp_session.get("https://www.google.com")) # This will work since the aiohttp_session is created in the loop_manager's loop and executed in the same loop.
+    ```
+
+3. **`background_thread`**: Runs a dedicated background thread with its own event loop.
+   - Best for: Long-running applications where you need to run async code from sync contexts.
+   - Benefit: Allows async code to run from any thread without blocking.
+   - Perfect when you're uncertain about your environment's event loop availability and don't use objects that assume they run in the same event loop.
+
+    ```python
+    # Background thread strategy - runs a daemon thread with a dedicated loop
+    # Ideal for long-running applications or uncertain environments
+    loop_manager.set_loop_strategy("background_thread")
+
+    # This will work from any thread, even without a running event loop
+    # The background thread handles all async operations
+    result = run_coroutine_sync(async_process_data())
+    ```
+
+### Logging Configuration
+
+`fastapi-injectable` provides a simple way to configure logging for the package. This is useful for debugging or monitoring the package's behavior.
+
+```python
+import logging
+from fastapi_injectable import configure_logging
+
+# Basic configuration with default format
+configure_logging(level=logging.DEBUG)
+
+# Custom format
+configure_logging(
+    level=logging.INFO,
+    format_="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+# Custom handler
+file_handler = logging.FileHandler("fastapi_injectable.log")
+configure_logging(level=logging.WARNING, handler=file_handler)
 ```
 
 ### Graceful Shutdown

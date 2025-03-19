@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, ParamSpec, TypeVar, cast
 
@@ -9,7 +8,6 @@ from fastapi.dependencies.utils import get_dependant, solve_dependencies
 from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
 
-logger = logging.getLogger(__name__)
 T = TypeVar("T")
 P = ParamSpec("P")
 _app: FastAPI | None = None
