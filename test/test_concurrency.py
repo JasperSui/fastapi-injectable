@@ -1,4 +1,6 @@
+import asyncio
 import concurrent.futures
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -162,8 +164,57 @@ def test_run_in_loop_background_thread_strategy(
             loop_manager_instance.set_loop_strategy("background_thread")
             loop_manager_instance.run_in_loop(mock_coro)
 
-            mock_run_coro_threadsafe.assert_called_once_with(mock_coro, mock_loop)
+            # Instead of checking exact arguments, just verify it was called once
+            # and the second argument is the loop
+            mock_run_coro_threadsafe.assert_called_once()
+            assert mock_run_coro_threadsafe.call_args[0][1] == mock_loop
             mock_wait.assert_called_once_with(mock_future)
+
+
+@patch("src.fastapi_injectable.concurrency.asyncio.run_coroutine_threadsafe")
+@patch("src.fastapi_injectable.concurrency.asyncio.iscoroutine")
+def test_run_in_loop_background_thread_strategy_with_gather(
+    mock_iscoroutine: Mock, mock_run_coro_threadsafe: Mock, loop_manager_instance: LoopManager
+) -> None:
+    """Test run_in_loop with 'background_thread' strategy using asyncio.gather."""
+    # Setup
+    mock_loop = Mock()
+    mock_gather = Mock(spec=asyncio.Future)  # Mock the gather result as a non-coroutine awaitable
+    mock_future = Mock()
+    mock_wrapper_coro = Mock()  # This will be our wrapper coroutine
+
+    # Configure mocks
+    mock_iscoroutine.return_value = False  # Make it treat our mock_gather as a non-coroutine
+    mock_run_coro_threadsafe.return_value = mock_future
+
+    with patch.object(loop_manager_instance, "get_loop", return_value=mock_loop):  # noqa: SIM117
+        with patch.object(loop_manager_instance, "_wait_with_retries") as mock_wait:
+            with patch(
+                "asyncio.coroutines._is_coroutine", return_value=True
+            ):  # Make our wrapper recognized as a coroutine
+                # Run the method under test
+                loop_manager_instance.set_loop_strategy("background_thread")
+
+                # Mock the wrapper coroutine creation inside run_in_loop
+                def side_effect(coro: Mock, loop: asyncio.AbstractEventLoop) -> Any:  # noqa: ANN401
+                    # Capture the wrapper coroutine that was created
+                    nonlocal mock_wrapper_coro
+                    # Verify this is not our original mock_gather but a wrapper
+                    assert coro is not mock_gather
+                    mock_wrapper_coro = coro
+                    return mock_future
+
+                mock_run_coro_threadsafe.side_effect = side_effect
+
+                # Call the method with our gather-like object
+                loop_manager_instance.run_in_loop(mock_gather)
+
+                # Verify a wrapper coroutine was created and passed to run_coroutine_threadsafe
+                mock_run_coro_threadsafe.assert_called_once()
+                assert mock_run_coro_threadsafe.call_args[0][1] == mock_loop
+
+                # Verify _wait_with_retries was called with the future
+                mock_wait.assert_called_once_with(mock_future)
 
 
 def test_wait_with_retries_success(loop_manager_instance: LoopManager) -> None:
