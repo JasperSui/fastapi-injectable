@@ -1,7 +1,7 @@
 import atexit
 import inspect
 import signal
-from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator, Sequence
 from typing import Any, ParamSpec, TypeVar, cast, overload
 
 from .async_exit_stack import async_exit_stack_manager
@@ -182,7 +182,7 @@ async def clear_dependency_cache() -> None:
     await dependency_cache.clear()
 
 
-def setup_graceful_shutdown(signals: list[signal.Signals] | None = None, *, raise_exception: bool = False) -> None:
+def setup_graceful_shutdown(signals: Sequence[signal.Signals] | None = None, *, raise_exception: bool = False) -> None:
     """Register handlers to perform cleanup during application shutdown.
 
     Args:
