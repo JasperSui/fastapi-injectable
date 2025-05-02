@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastapi-injectable"
-version = "0.7.0"
+version = "0.7.1"
 description = "Allow you to painlessly use dependency injection mechanism (`Depends`) of FastAPI outside the FastAPI routes"
 authors = ["Jasper Sui <suiyang03@gmail.com>"]
 license = "MIT"
