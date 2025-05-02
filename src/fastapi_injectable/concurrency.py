@@ -2,7 +2,7 @@ import asyncio
 import atexit
 import concurrent.futures
 import threading
-from collections.abc import Coroutine
+from collections.abc import Awaitable, Coroutine
 from typing import Any, Literal, TypeVar
 
 T = TypeVar("T")
@@ -104,19 +104,28 @@ class LoopManager:
             return False
         return running_loop is loop
 
-    def run_in_loop(self, coro: Coroutine[Any, Any, T] | asyncio.Future[T]) -> T:
+    def run_in_loop(self, awaitable: Awaitable[T]) -> T:
         """Run coroutine in the appropriate loop.
 
         Args:
-            coro: The coroutine to execute.
+            awaitable: The awaitable to execute.
 
         Returns:
-            The result of the coroutine execution.
+            The result of the awaitable execution.
         """
         loop = self.get_loop()
 
         if self._loop_strategy in {"current", "isolated"}:
-            return loop.run_until_complete(coro)
+            return loop.run_until_complete(awaitable)
+
+        if asyncio.iscoroutine(awaitable):
+            coro: Coroutine[Any, Any, T] = awaitable  # pragma: no cover
+        else:
+            # Prepare coroutine for run_coroutine_threadsafe
+            async def _wrapper() -> T:
+                return await awaitable  # pragma: no cover
+
+            coro = _wrapper()
 
         return self._wait_with_retries(asyncio.run_coroutine_threadsafe(coro, loop))
 
@@ -151,4 +160,6 @@ def run_coroutine_sync(coro: Coroutine[Any, Any, T]) -> T:
     Raises:
         Any exception raised by the coroutine or during execution.
     """
-    return loop_manager.run_in_loop(coro)
+    return loop_manager.run_in_loop(
+        coro
+    )  # NOTE(Jasper Sui): This can run not only coroutine, but also Future and Task.
