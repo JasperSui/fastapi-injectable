@@ -91,7 +91,15 @@ class AsyncExitStackManager:
                 if loop_manager.in_loop():
                     await asyncio.gather(*tasks)
                 else:
-                    loop_manager.run_in_loop(asyncio.gather(*tasks))  # pragma: no cover
+
+                    async def _wrapper() -> None:  # pragma: no cover
+                        """Wrapper to run the gather in the correct loop."""
+                        await asyncio.gather(*tasks)
+
+                    # If we use loop_manager.run_in_loop(asyncio.gather(*tasks)),
+                    # the gather future will be awaited in the current loop, not the loop in the loop_manager.
+                    # then it will raise an RuntimeError(got Future <_GatheringFuture pending> attached to a different loop)  # noqa: E501
+                    loop_manager.run_in_loop(_wrapper())  # pragma: no cover
             except RuntimeError as e:  # pragma: no cover
                 msg = (
                     "Cannot cleanup all stacks because there is something wrong with the loop. "
