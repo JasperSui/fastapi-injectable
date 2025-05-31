@@ -302,6 +302,35 @@ assert country_1.capital is not country_2.capital is not country_3.capital
 assert country_1.capital.mayor is not country_2.capital.mayor is not country_3.capital.mayor
 ```
 
+### Type Hinting
+
+`fastapi-injectable` will prepare the dependency objects of injected functions for you, but static type checkers like `mypy` haven't known about the dependency object existence since they are normally injected via `Annotated[Type, Depends(get_dependency_func)]`, when using this kind of expression, static type checkers will complain if you don't explicitly provide the dependency object when using the function, example error codes ([call-arg](https://mypy.readthedocs.io/en/stable/error_code_list.html#check-arguments-in-calls-call-arg)).
+
+```python
+
+@injectable
+def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    return Country(capital)
+
+country = get_country() # mypy will complain here, error: Missing positional arguments or Too few arguments.
+```
+
+To make the `mypy` happy, you can enable the `fastapi-injectable.mypy` plugin in your `mypy.ini` file, or add `fastapi_injectable.mypy` to your `pyproject.toml` file.
+
+```toml
+[tool.mypy]
+# ... your mypy config
+plugins = ["fastapi_injectable.mypy"]
+```
+
+```python
+@injectable
+def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    return Country(capital)
+
+country = get_country() # Now it's happy!
+```
+
 ### Event Loop Management
 
 `fastapi-injectable` includes a powerful loop management system to handle asynchronous code execution in different contexts. This is particularly useful when working with async code in synchronous environments or when you need controlled event loop execution.
@@ -616,9 +645,7 @@ A: Yes! You can freely mix them. For running async code in sync contexts, use th
 
 ### Are type hints fully supported for `injectable()` and `get_injected_obj()`?
 
-A: Currently, type hint support is a work in progress. However, this doesn't affect the core benefits of the package (seamlessly reusing and maintaining consistency in your FastAPI DI system).
-
-We're actively working on improving type hint support, and we'll have good news on this front soon! In the meantime, enjoy the elegant and clean solution that `fastapi-injectable` provides.
+A: Currently, type hint support is available if you are using `mypy` as your static type checker, you can enable the `fastapi-injectable.mypy` plugin in your `mypy.ini` file, or add `fastapi_injectable.mypy` to your `pyproject.toml` file, see [Type Hinting](#type-hinting) for more details.
 
 <hr>
 
