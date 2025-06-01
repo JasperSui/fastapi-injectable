@@ -98,16 +98,20 @@ class FastApiInjectablePlugin(Plugin):
         if not isinstance(func_node, FuncDef):
             return ctx.default_return_type
 
-        # Process the function signature using shared logic
-        modified_arg_kinds = self._modify_arg_kinds_for_dependencies(
-            func_node.arguments, original_callable_type.arg_kinds
-        )
+        # Since we can't get the Annotated[Type, Depends(...)] from the FuncDef node anymore (it's from deserialization)
+        # We can only treat all arguments as optional for now,
+        # But the best option is to get the Annotated[Type, Depends(...)] from the FuncDef node,
+        # Then check if the argument is Annotated[Type, Depends(...)], if so, make it optional, otherwise, keep it as is.  # noqa: E501
+        modified_arg_kinds = []
+        for arg_kind in original_callable_type.arg_kinds:
+            if arg_kind == ARG_POS:
+                modified_arg_kinds.append(ARG_OPT)
+            elif arg_kind == ARG_NAMED:
+                modified_arg_kinds.append(ARG_NAMED_OPT)
+            else:
+                modified_arg_kinds.append(arg_kind)
 
-        # Return modified callable type if we made changes
-        if modified_arg_kinds != original_callable_type.arg_kinds:
-            return original_callable_type.copy_modified(arg_kinds=modified_arg_kinds)
-
-        return ctx.default_return_type
+        return original_callable_type.copy_modified(arg_kinds=modified_arg_kinds)
 
     def _process_injectable_function_signature(self, ctx: FunctionSigContext) -> CallableType:
         """Process the signature of an @injectable decorated function.
