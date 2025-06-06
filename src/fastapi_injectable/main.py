@@ -68,6 +68,7 @@ async def resolve_dependencies(
         async_exit_stack=async_exit_stack,
         embed_body_fields=False,
         dependency_cache=cache,
+        dependency_overrides_provider=app,
     )
     if cache is not None:
         cache.update(solved_dependency.dependency_cache)
