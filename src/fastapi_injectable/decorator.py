@@ -40,7 +40,12 @@ def _override_func_dependency_signature(func: Callable[P, T] | Callable[P, Await
                     fastapi_default = metadata
                     break
             if fastapi_default:
-                parameter = inspect.Parameter.replace(param, default=object())
+                dynamic_default = type(
+                    "Injected_" + param.annotation.__origin__.__name__,
+                    (param.annotation.__origin__,),
+                    {"__init__": lambda self, *args, **kwargs: None},
+                )
+                parameter = inspect.Parameter.replace(param, default=dynamic_default())
         new_parameters.append(parameter)
     func.__signature__ = signature.replace(parameters=new_parameters)  # type: ignore[union-attr]
 

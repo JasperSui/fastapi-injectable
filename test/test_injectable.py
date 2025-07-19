@@ -1,5 +1,5 @@
 # type: ignore  # noqa: PGH003
-
+from inspect import signature
 from typing import Annotated
 
 from fastapi import Depends
@@ -307,3 +307,17 @@ def test_injectable_sync_with_async_wrap_function_without_cache() -> None:
     country_3 = injectable_get_country()
     assert country_1.capital is not country_2.capital is not country_3.capital
     assert country_1.capital.mayor is not country_2.capital.mayor is not country_3.capital.mayor
+
+
+def test_injectable_converts_depends_to_dynamic_types() -> None:
+    async def get_mayor() -> Mayor:
+        return Mayor()
+
+    @injectable(use_cache=True)
+    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    sig = signature(get_capital)
+    param = next(iter(sig.parameters.values()))
+
+    assert type(param.default).__name__ == "Injected_Mayor"
