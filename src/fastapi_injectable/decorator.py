@@ -43,7 +43,7 @@ def _override_func_dependency_signature(func: Callable[P, T] | Callable[P, Await
                 dynamic_default = type(
                     "Injected_" + param.annotation.__origin__.__name__,
                     (param.annotation.__origin__,),
-                    {"__init__": lambda self, *args, **kwargs: None},
+                    {"__init__": lambda self, *args, **kwargs: None},  # noqa: ARG005
                 )
                 parameter = inspect.Parameter.replace(param, default=dynamic_default())
         new_parameters.append(parameter)
