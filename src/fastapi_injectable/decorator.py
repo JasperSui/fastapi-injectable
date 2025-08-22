@@ -1,5 +1,5 @@
 import inspect
-from collections.abc import Awaitable, Callable, Coroutine, Generator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
 from functools import wraps
 from typing import TYPE_CHECKING, Annotated, Any, ParamSpec, TypeVar, cast, get_origin, overload
 
@@ -52,15 +52,23 @@ def _override_func_dependency_signature(func: Callable[P, T] | Callable[P, Await
 
 @overload
 def injectable(
-    func: Callable[P, T],
+    func: Callable[P, Generator[T, Any, Any]],
     *,
     use_cache: bool = True,
-) -> Callable[P, T]: ...
+) -> Callable[P, Generator[T, Any, Any]]: ...
 
 
 @overload
 def injectable(
-    func: Callable[P, Generator[T, Any, Any]],
+    func: Callable[P, AsyncGenerator[T, Any]],
+    *,
+    use_cache: bool = True,
+) -> Callable[P, AsyncGenerator[T, Any]]: ...
+
+
+@overload
+def injectable(
+    func: Callable[P, T],
     *,
     use_cache: bool = True,
 ) -> Callable[P, T]: ...
@@ -73,24 +81,24 @@ def injectable(
 ) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
+# overloads above provide actual type-hints
+# Callable[..., Any] is just a place holder
 def injectable(
-    func: Callable[P, T] | Callable[P, Awaitable[T]] | None = None,
+    func: Callable[..., Any] | None = None,
     *,
     use_cache: bool = True,
-) -> (
-    Callable[P, T]
-    | Callable[P, Awaitable[T]]
-    | Callable[[Callable[P, T] | Callable[P, Awaitable[T]]], Callable[P, T] | Callable[P, Awaitable[T]]]
-):
+) -> Callable[..., Any]:
     """Decorator to inject dependencies into any callable, sync or async."""
 
     def decorator(
-        target: Callable[P, T] | Callable[P, Awaitable[T]],
-    ) -> Callable[P, T] | Callable[P, Awaitable[T]]:
+        target: Callable[P, T] | Callable[P, Awaitable[T]] | Callable[P, AsyncGenerator[T, Any]],
+    ) -> Callable[P, T] | Callable[P, Awaitable[T]] | Callable[P, AsyncGenerator[T, Any]]:
         # Override the function signature to make dependency-injected parameters optional for packages like typer, cyclopt, etc.  # noqa: E501
         _override_func_dependency_signature(target)
 
+        # Note, these are mutually exclusive
         is_async = inspect.iscoroutinefunction(target)
+        is_async_generator = inspect.isasyncgenfunction(target)
 
         @wraps(target)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
@@ -98,9 +106,19 @@ def injectable(
             return await cast("Callable[..., Coroutine[Any, Any, T]]", target)(*args, **{**dependencies, **kwargs})
 
         @wraps(target)
+        async def async_gen_wrapper(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[T, Any]:
+            dependencies = await resolve_dependencies(func=target, use_cache=use_cache)
+            async for x in cast("Callable[..., AsyncGenerator[T, Any]]", target)(*args, **{**dependencies, **kwargs}):
+                yield x
+
+        @wraps(target)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             dependencies = run_coroutine_sync(resolve_dependencies(func=target, use_cache=use_cache))
             return cast("Callable[..., T]", target)(*args, **{**dependencies, **kwargs})
+
+        if is_async_generator:
+            set_original_func(async_gen_wrapper, target)
+            return async_gen_wrapper
 
         if is_async:
             set_original_func(async_wrapper, target)

@@ -321,3 +321,43 @@ def test_injectable_converts_depends_to_dynamic_types() -> None:
     param = next(iter(sig.parameters.values()))
 
     assert type(param.default).__name__ == "Injected_Mayor"
+
+
+async def test_injectable_async_generator_and_decorator_with_cache() -> None:
+    async def get_mayor() -> Mayor:
+        return Mayor()
+
+    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    @injectable(use_cache=True)
+    async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+        yield Country(capital)
+
+    async for country in get_country():
+        country_1 = country
+
+    async for country in get_country():
+        country_2 = country
+    assert country_1.capital is country_2.capital
+    assert country_1.capital.mayor is country_2.capital.mayor
+
+
+def test_injectable_sync_generator_and_decorator_with_cache() -> None:
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    @injectable(use_cache=True)
+    def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+        yield Country(capital)
+
+    for country in get_country():
+        country_1 = country
+
+    for country in get_country():
+        country_2 = country
+    assert country_1.capital is country_2.capital
+    assert country_1.capital.mayor is country_2.capital.mayor
