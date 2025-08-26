@@ -1,4 +1,5 @@
 import inspect
+import types
 from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
 from functools import wraps
 from typing import TYPE_CHECKING, Annotated, Any, ParamSpec, TypeVar, cast, get_origin, overload
@@ -40,10 +41,11 @@ def _override_func_dependency_signature(func: Callable[P, T] | Callable[P, Await
                     fastapi_default = metadata
                     break
             if fastapi_default:
-                dynamic_default = type(
+                dynamic_default = types.new_class(
                     "Injected_" + param.annotation.__origin__.__name__,
                     (param.annotation.__origin__,),
-                    {"__init__": lambda self, *args, **kwargs: None},  # noqa: ARG005
+                    {},
+                    lambda ns: ns.update({"__init__": lambda self, *args, **kwargs: None}),  # noqa: ARG005
                 )
                 parameter = inspect.Parameter.replace(param, default=dynamic_default())
         new_parameters.append(parameter)
