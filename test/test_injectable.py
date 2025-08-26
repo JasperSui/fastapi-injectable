@@ -1,6 +1,6 @@
 # type: ignore  # noqa: PGH003
 from inspect import signature
-from typing import Annotated
+from typing import Annotated, Generic, TypeVar
 
 from fastapi import Depends
 
@@ -19,6 +19,14 @@ class Capital:
 class Country:
     def __init__(self, capital: Capital) -> None:
         self.capital = capital
+
+
+T = TypeVar("T", bound=Country | Capital | Mayor)
+
+
+class Assembly(Generic[T]):
+    def __init__(self, members: set[T]) -> None:
+        self.members = members
 
 
 def test_injectable_sync_only_decorator_with_cache() -> None:
@@ -321,6 +329,32 @@ def test_injectable_converts_depends_to_dynamic_types() -> None:
     param = next(iter(sig.parameters.values()))
 
     assert type(param.default).__name__ == "Injected_Mayor"
+
+
+def test_injectable_converts_annotated_generic_depends_to_dynamic_types() -> None:
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    def get_country(capital: Annotated[Capital, Depends(get_capital, use_cache=False)]) -> Country:
+        return Country(capital)
+
+    def get_country_assembly(
+        country_a: Annotated[Country, Depends(get_country, use_cache=False)],
+        country_b: Annotated[Country, Depends(get_country, use_cache=False)],
+    ) -> Assembly[Country]:
+        return Assembly(members=[country_a, country_b])
+
+    @injectable
+    def injectable_function(assembly: Annotated[Assembly[Country], Depends(get_country_assembly)]) -> Assembly[Country]:
+        return assembly
+
+    sig = signature(injectable_function)
+    param = next(iter(sig.parameters.values()))
+
+    assert type(param.default).__name__ == "Injected_Assembly"
 
 
 async def test_injectable_async_generator_and_decorator_with_cache() -> None:
