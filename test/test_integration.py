@@ -1,12 +1,19 @@
 from collections.abc import AsyncGenerator, Generator
 from typing import Annotated, Any
+from unittest.mock import Mock
 
 import pytest
-from fastapi import Depends
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
 
-from src.fastapi_injectable.concurrency import run_coroutine_sync
+from src.fastapi_injectable import register_app
+from src.fastapi_injectable.concurrency import loop_manager, run_coroutine_sync
 from src.fastapi_injectable.decorator import injectable
-from src.fastapi_injectable.util import cleanup_all_exit_stacks, cleanup_exit_stack_of_func, get_injected_obj
+from src.fastapi_injectable.util import (
+    cleanup_all_exit_stacks,
+    cleanup_exit_stack_of_func,
+    get_injected_obj,
+)
 
 
 @pytest.fixture
@@ -604,3 +611,154 @@ def test_function_with_non_dependency_parameters_and_dependencies_be_resolved_co
 
     country: Country = get_country(basic_str="basic_str", basic_int=1, basic_bool=True, basic_dict={"key": "value"})  # type: ignore  # noqa: PGH003
     assert country is not None
+
+
+def test_get_injected_obj_with_dependency_override_sync(clean_exit_stack_manager: None) -> None:
+    """Tests that get_injected_obj respects dependency_overrides for sync dependencies."""
+
+    def sync_dependency_override() -> int:
+        return 1
+
+    def use_sync_dependency_override() -> int:
+        return get_injected_obj(sync_dependency_override)
+
+    loop_manager.set_loop_strategy(
+        "background_thread"
+    )  # To avoid affecting the FastAPI app and httpx client event loop
+    app = FastAPI()
+
+    @app.get("/")
+    def read_root() -> int:
+        return use_sync_dependency_override()
+
+    mock_dependency = Mock(return_value=2)
+    app.dependency_overrides[sync_dependency_override] = lambda: mock_dependency()
+    run_coroutine_sync(register_app(app))
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == 2
+    mock_dependency.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_injected_obj_with_dependency_override_async(clean_exit_stack_manager: None) -> None:
+    """Tests that get_injected_obj respects dependency_overrides for async dependencies."""
+
+    async def async_dependency_override() -> int:
+        return 1
+
+    def use_async_dependency_override() -> int:
+        return get_injected_obj(async_dependency_override)
+
+    loop_manager.set_loop_strategy(
+        "background_thread"
+    )  # To avoid affecting the FastAPI app and httpx client event loop
+    app = FastAPI()
+
+    @app.get("/")
+    async def read_root() -> int:
+        return use_async_dependency_override()
+
+    mock_dependency = Mock(return_value=2)
+    app.dependency_overrides[async_dependency_override] = lambda: mock_dependency()
+    await register_app(app)
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == 2
+    mock_dependency.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_injected_obj_with_dependency_override_sync_generator(
+    clean_exit_stack_manager: None,
+) -> None:
+    """Tests that get_injected_obj respects dependency_overrides for sync generators."""
+    sync_cleanup_mock_override = Mock()
+
+    def sync_gen_dependency_override() -> Generator[int, None, None]:
+        try:
+            yield 1
+        finally:
+            sync_cleanup_mock_override()
+
+    def use_sync_gen_dependency_override() -> int:
+        return get_injected_obj(sync_gen_dependency_override)
+
+    override_sync_cleanup_mock = Mock()
+
+    def override_sync_gen() -> Generator[int, None, None]:
+        try:
+            yield 2
+        finally:
+            override_sync_cleanup_mock()
+
+    loop_manager.set_loop_strategy(
+        "background_thread"
+    )  # To avoid affecting the FastAPI app and httpx client event loop
+    app = FastAPI()
+
+    @app.get("/")
+    def read_root() -> int:
+        return use_sync_gen_dependency_override()
+
+    app.dependency_overrides[sync_gen_dependency_override] = override_sync_gen
+    await register_app(app)
+
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.json() == 2
+
+    await cleanup_all_exit_stacks()
+    sync_cleanup_mock_override.assert_not_called()
+    override_sync_cleanup_mock.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_injected_obj_with_dependency_override_async_generator(
+    clean_exit_stack_manager: None,
+) -> None:
+    """Tests that get_injected_obj respects dependency_overrides for async generators."""
+    async_cleanup_mock_override = Mock()
+
+    async def async_gen_dependency_override() -> AsyncGenerator[int, None]:
+        try:
+            yield 1
+        finally:
+            async_cleanup_mock_override()
+
+    def use_async_gen_dependency_override() -> int:
+        return get_injected_obj(async_gen_dependency_override)
+
+    override_async_cleanup_mock = Mock()
+
+    async def override_async_gen() -> AsyncGenerator[int, None]:
+        try:
+            yield 2
+        finally:
+            override_async_cleanup_mock()
+
+    loop_manager.set_loop_strategy(
+        "background_thread"
+    )  # To avoid affecting the FastAPI app and httpx client event loop
+    app = FastAPI()
+
+    @app.get("/")
+    async def read_root() -> int:
+        return use_async_gen_dependency_override()
+
+    app.dependency_overrides[async_gen_dependency_override] = override_async_gen
+    await register_app(app)
+
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.json() == 2
+
+    await cleanup_all_exit_stacks()
+    async_cleanup_mock_override.assert_not_called()
+    override_async_cleanup_mock.assert_called_once()
