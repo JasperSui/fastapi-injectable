@@ -125,18 +125,20 @@ def injectable(
 
         @wraps(target)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            dependencies = await resolve_dependencies(func=target, use_cache=use_cache)
+            dependencies = await resolve_dependencies(func=target, use_cache=use_cache, provided_kwargs=kwargs)
             return await cast("Callable[..., Coroutine[Any, Any, T]]", target)(*args, **{**dependencies, **kwargs})
 
         @wraps(target)
         async def async_gen_wrapper(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[T, Any]:
-            dependencies = await resolve_dependencies(func=target, use_cache=use_cache)
+            dependencies = await resolve_dependencies(func=target, use_cache=use_cache, provided_kwargs=kwargs)
             async for x in cast("Callable[..., AsyncGenerator[T, Any]]", target)(*args, **{**dependencies, **kwargs}):
                 yield x
 
         @wraps(target)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            dependencies = run_coroutine_sync(resolve_dependencies(func=target, use_cache=use_cache))
+            dependencies = run_coroutine_sync(
+                resolve_dependencies(func=target, use_cache=use_cache, provided_kwargs=kwargs)
+            )
             return cast("Callable[..., T]", target)(*args, **{**dependencies, **kwargs})
 
         if is_async_generator:

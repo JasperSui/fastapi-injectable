@@ -69,12 +69,13 @@ print(result) # Output: 'data'
 
 ## Key Features
 
-1. **Flexible Injection**: Use decorators, function wrappers, or utility functions.
-2. **Full Async Support**: Works with both sync and async code.
-3. **Resource Management**: Built-in cleanup for dependencies.
-4. **Dependency Caching**: Optional caching for better performance.
-5. **Graceful Shutdown**: Automatic cleanup on program exit.
-6. **Event Loop Management**: Control the event loop to ensure the objects created by `fastapi-injectable` are executed in the right loop.
+1. **Basic Injection**: Use decorators, function wrappers, or utility functions.
+2. **Manual Overrides**: Explicit arguments you pass always take priority over injected dependencies (great for tests and mocks).
+3. **Full Async Support**: Works with both sync and async code.
+4. **Resource Management**: Built-in cleanup for dependencies.
+5. **Dependency Caching**: Optional caching for better performance.
+6. **Graceful Shutdown**: Automatic cleanup on program exit.
+7. **Event Loop Management**: Control the event loop to ensure the objects created by `fastapi-injectable` are executed in the right loop.
 
 ## Overview
 
@@ -146,6 +147,42 @@ def process_data(db: Annotated[Database, Depends(get_database)]):
 # Get injected instance without decorator
 result = get_injected_obj(process_data)
 print(result) # Output: 'data'
+```
+
+### Manual Overrides
+
+Sometimes you want to use FastAPI’s dependency injection system, but still explicitly pass certain arguments yourself.
+
+For example, in tests you may want to supply a mock instead of the default dependency, or in CLI tools you may want to provide a value directly.
+
+`fastapi-injectable` makes this possible by allowing manual overrides: any arguments you pass will take priority over injected dependencies.
+
+```python
+from typing import Annotated
+from fastapi import Depends
+from fastapi_injectable import get_injected_obj, injectable
+
+class Database:
+    def query(self) -> str:
+        return "real data"
+
+def get_db() -> Database:
+    return Database()
+
+@injectable
+def process_data(db: Annotated[Database, Depends(get_db)]) -> str:
+    return db.query()
+
+# Normal usage – resolved through DI
+print(process_data())
+# Output: "real data"
+
+# Override dependency manually (great for tests)
+mock_db = Database()
+mock_db.query = lambda: "mock data"
+
+print(process_data(db=mock_db)) # Explicitly pass the mock dependency
+# Output: "mock data"
 ```
 
 ### Generator Dependencies with Cleanup

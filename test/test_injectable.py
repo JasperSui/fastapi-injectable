@@ -409,3 +409,77 @@ def test_injectable_converts_depends_with_optional_uniontype_types() -> None:
     param = next(iter(sig.parameters.values()))
 
     assert type(param.default).__name__.startswith("Injected")
+
+
+def test_injectable_sync_override_country() -> None:
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    @injectable
+    def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+        return Country(capital)
+
+    # automatic DI
+    country_injected = get_country()
+    assert isinstance(country_injected, Country)
+    assert isinstance(country_injected.capital, Capital)
+    assert isinstance(country_injected.capital.mayor, Mayor)
+
+    # manual override
+    capital = Capital(Mayor())
+    country_manual = get_country(capital=capital)
+    assert country_manual.capital is capital
+    assert country_manual.capital.mayor is capital.mayor
+
+
+async def test_injectable_async_override_country() -> None:
+    async def get_mayor() -> Mayor:
+        return Mayor()
+
+    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    @injectable
+    async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+        return Country(capital)
+
+    country_injected = await get_country()
+    assert isinstance(country_injected, Country)
+    assert isinstance(country_injected.capital, Capital)
+    assert isinstance(country_injected.capital.mayor, Mayor)
+
+    capital = Capital(Mayor())
+    country_manual = await get_country(capital=capital)
+    assert country_manual.capital is capital
+    assert country_manual.capital.mayor is capital.mayor
+
+
+async def test_injectable_async_gen_override_country() -> None:
+    async def get_mayor() -> Mayor:
+        return Mayor()
+
+    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    @injectable
+    async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+        yield Country(capital)
+
+    country_injected: Country | None = None
+    async for c in get_country():
+        country_injected = c
+        break
+    assert isinstance(country_injected, Country)
+    assert isinstance(country_injected.capital, Capital)
+    assert isinstance(country_injected.capital.mayor, Mayor)
+
+    capital = Capital(Mayor())
+    country_manual: Country | None = None
+    async for c in get_country(capital=capital):
+        country_manual = c
+        break
+    assert country_manual.capital is capital
+    assert country_manual.capital.mayor is capital.mayor
