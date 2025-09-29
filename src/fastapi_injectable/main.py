@@ -27,7 +27,10 @@ def _get_app() -> FastAPI | None:
 
 
 async def resolve_dependencies(
-    func: Callable[P, T] | Callable[P, Awaitable[T]], *, use_cache: bool = True
+    func: Callable[P, T] | Callable[P, Awaitable[T]],
+    *,
+    use_cache: bool = True,
+    provided_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Resolve dependencies for the given function using FastAPI's dependency injection system.
 
@@ -38,6 +41,7 @@ async def resolve_dependencies(
         func: The function for which dependencies need to be resolved. It can be a synchronous
             or asynchronous callable.
         use_cache: Whether to use a cache for dependency resolution. Defaults to True.
+        provided_kwargs: Explicit kwargs passed by the caller (these override DI).
 
     Returns:
         A dictionary mapping argument names to resolved dependency values.
@@ -45,10 +49,15 @@ async def resolve_dependencies(
     Notes:
         - A fake HTTP request is created to mimic FastAPI's request-based dependency resolution.
     """
+    provided_kwargs = provided_kwargs or {}
     root_dep = get_dependant(path="command", call=func)
 
     # Get names of actual dependency (Depends()) parameters
     dependency_names = {param.name for param in root_dep.dependencies if param.name}
+
+    # Drop dependencies that are already satisfied by provided kwargs
+    effective_dependencies = [dep for dep in root_dep.dependencies if dep.name not in provided_kwargs]
+    root_dep.dependencies = effective_dependencies
 
     fake_request_scope: dict[str, Any] = {
         "type": "http",
@@ -59,7 +68,7 @@ async def resolve_dependencies(
     if app is not None:
         fake_request_scope["app"] = app
     fake_request = Request(fake_request_scope)
-    root_dep.call = cast(Callable[..., Any], root_dep.call)
+    root_dep.call = cast("Callable[..., Any]", root_dep.call)
     async_exit_stack = await async_exit_stack_manager.get_stack(root_dep.call)
     cache = dependency_cache.get() if use_cache else None
     solved_dependency = await solve_dependencies(
@@ -73,6 +82,8 @@ async def resolve_dependencies(
     if cache is not None:
         cache.update(solved_dependency.dependency_cache)
 
-    return {
+    resolved = {
         param_name: value for param_name, value in solved_dependency.values.items() if param_name in dependency_names
     }
+
+    return {**resolved, **provided_kwargs}

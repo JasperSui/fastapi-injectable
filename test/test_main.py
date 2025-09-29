@@ -221,3 +221,29 @@ async def test_resolve_dependencies_with_registered_app(
     # Verify app was included in request scope
     called_args = mock_solve_dependencies.call_args[1]
     assert called_args["request"].scope["app"] == mock_get_app.return_value
+
+
+async def test_resolve_dependencies_with_provided_kwargs(
+    mock_solve_dependencies: AsyncMock,
+    mock_get_dependant: Mock,
+    mock_dependency_cache: Mock,
+    mock_async_exit_stack_manager: Mock,
+) -> None:
+    dependency_param_name = "dep"
+    mock_dependant_dependency = Mock()
+    mock_dependant_dependency.name = dependency_param_name
+    mock_get_dependant.return_value.dependencies = [
+        mock_dependant_dependency,
+    ]
+    mock_solve_dependencies.return_value = AsyncMock(values={}, dependency_cache={})
+
+    def func(dep: DummyDependency) -> None:
+        return None
+
+    provided_dep = DummyDependency()
+    provided_kwargs = {dependency_param_name: provided_dep}
+    dependencies = await resolve_dependencies(func, provided_kwargs=provided_kwargs)
+
+    assert dependencies == {dependency_param_name: provided_dep}
+    assert mock_get_dependant.return_value.dependencies == []
+    mock_solve_dependencies.assert_awaited_once()
