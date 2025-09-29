@@ -395,3 +395,17 @@ def test_injectable_sync_generator_and_decorator_with_cache() -> None:
         country_2 = country
     assert country_1.capital is country_2.capital
     assert country_1.capital.mayor is country_2.capital.mayor
+
+
+def test_injectable_converts_depends_with_optional_uniontype_types() -> None:
+    async def get_mayor() -> Mayor | None:
+        return None
+
+    @injectable(use_cache=True)
+    def get_capital(mayor: Annotated[Mayor | None, Depends(get_mayor)]) -> Capital | None:
+        return Capital(mayor) if mayor else None
+
+    sig = signature(get_capital)
+    param = next(iter(sig.parameters.values()))
+
+    assert type(param.default).__name__.startswith("Injected")

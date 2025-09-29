@@ -2,7 +2,7 @@ import inspect
 import types
 from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator
 from functools import wraps
-from typing import TYPE_CHECKING, Annotated, Any, ParamSpec, TypeVar, cast, get_origin, overload
+from typing import TYPE_CHECKING, Annotated, Any, ParamSpec, TypeVar, Union, cast, get_args, get_origin, overload
 
 import fastapi
 import fastapi.params
@@ -41,9 +41,22 @@ def _override_func_dependency_signature(func: Callable[P, T] | Callable[P, Await
                     fastapi_default = metadata
                     break
             if fastapi_default:
+                actual_type = get_args(param.annotation)[0]
+                origin = get_origin(actual_type)
+
+                base_for_class = actual_type
+                if origin is Union or origin is types.UnionType:
+                    union_args = get_args(actual_type)
+                    base_for_class = next(
+                        (t for t in union_args if t is not type(None)),
+                        union_args[0] if union_args else object,
+                    )
+
+                base_class = get_origin(base_for_class) or base_for_class
+
                 dynamic_default = types.new_class(
-                    "Injected_" + param.annotation.__origin__.__name__,
-                    (param.annotation.__origin__,),
+                    "Injected_" + getattr(base_class, "__name__", "Injected"),
+                    (base_class,),
                     {},
                     lambda ns: ns.update({"__init__": lambda self, *args, **kwargs: None}),  # noqa: ARG005
                 )
