@@ -58,7 +58,15 @@ def _override_func_dependency_signature(func: Callable[P, T] | Callable[P, Await
                     "Injected_" + getattr(base_class, "__name__", "Injected"),
                     (base_class,),
                     {},
-                    lambda ns: ns.update({"__init__": lambda self, *args, **kwargs: None}),  # noqa: ARG005
+                    lambda ns: ns.update(
+                        {
+                            "__init__": lambda self, *args, **kwargs: None,  # noqa: ARG005
+                            **{
+                                method: lambda *args, **kwargs: None  # noqa: ARG005
+                                for method in getattr(base_class, "__abstractmethods__", [])  # noqa: B023
+                            },
+                        }
+                    ),
                 )
                 parameter = inspect.Parameter.replace(param, default=dynamic_default())
         new_parameters.append(parameter)

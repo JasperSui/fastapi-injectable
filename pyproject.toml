@@ -39,6 +39,7 @@ ipython = "^8.30.0"
 ipdb = "^0.13.13"
 furo = "^2024.8.6"
 coverage = { extras = ["toml"], version = "^7.6.9" }
+httpx = "^0.28.1"
 
 [tool.ruff]
 lint.ignore = [

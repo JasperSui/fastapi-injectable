@@ -134,7 +134,7 @@ def mypy(session: Session) -> None:
 def tests(session: Session) -> None:
     """Run the test suite."""
     session.install(".")
-    session.install("coverage[toml]", "pytest", "pytest-asyncio")
+    session.install("coverage[toml]", "pytest", "pytest-asyncio", "httpx")
     try:
         session.run("coverage", "run", "--parallel-mode", "-m", "pytest", *session.posargs)
     finally:

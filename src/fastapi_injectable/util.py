@@ -1,8 +1,10 @@
 import atexit
 import inspect
 import signal
-from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Generator, Sequence
-from typing import Any, ParamSpec, TypeVar, cast, overload
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
+from typing import Annotated, Any, ParamSpec, TypeVar, cast, get_type_hints, overload
+
+from fastapi import Depends
 
 from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
@@ -10,7 +12,72 @@ from .concurrency import run_coroutine_sync
 from .decorator import injectable
 
 T = TypeVar("T")
+T2 = TypeVar("T2")
 P = ParamSpec("P")
+
+PROVIDER_TO_WRAPPER_FUNC_MAP: dict[Callable[..., Any], list[Callable[[Any], Any]]] = {}
+
+
+def _create_depends_function(
+    provider: Callable[..., Any],
+) -> Callable[..., Any]:
+    """Build a pass-through dependency for FastAPI.
+
+    Related issue: https://github.com/JasperSui/fastapi-injectable/issues/153
+
+    The returned callable has a single parameter whose annotation is:
+        Annotated[<provider_return_type>, Depends(provider)]
+    and it simply returns that parameter.
+
+    Type checkers see this as Callable[[T], T] with T inferred from the provider's return type.
+
+    Raises:
+        TypeError if the provider's return type cannot be determined.
+    """
+    # Runtime: resolve the *concrete* return type for FastAPI's inspection
+    try:
+        hints = get_type_hints(provider, include_extras=True)
+    except Exception:  # pragma: no cover # noqa: BLE001
+        hints = {}
+
+    rt = hints.get("return", inspect.Signature.empty)
+
+    if rt in (inspect.Signature.empty, Any, None):  # pragma: no cover
+        msg = (
+            f"Cannot infer return type for provider {getattr(provider, '__name__', repr(provider))}. "
+            "Please add an explicit return annotation."
+        )
+        raise TypeError(msg)
+
+    def inner(dep: T2) -> T2:
+        return dep
+
+    # Provide the annotations FastAPI inspects at runtime
+    inner.__annotations__ = {
+        "dep": Annotated[rt, Depends(provider)],
+        "return": rt,
+    }
+
+    # Nice signature for docs/inspection
+    inner.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
+        parameters=[
+            inspect.Parameter(
+                "dep",
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                annotation=Annotated[rt, Depends(provider)],
+            )
+        ],
+        return_annotation=rt,
+    )
+
+    inner.__name__ = f"{getattr(provider, '__name__', 'provider')}_extractor"
+
+    # Store the wrapper function for cleanup the provider later
+    if provider not in PROVIDER_TO_WRAPPER_FUNC_MAP:
+        PROVIDER_TO_WRAPPER_FUNC_MAP[provider] = []
+    PROVIDER_TO_WRAPPER_FUNC_MAP[provider].append(inner)
+
+    return inner
 
 
 @overload
@@ -111,30 +178,22 @@ def get_injected_obj(
         - Cleanup code in generators will be executed when calling cleanup functions
         - Uses FastAPI's dependency injection system under the hood
     """
-    injectable_func = injectable(func, use_cache=use_cache)
-
     if args is None:
         args = []
     if kwargs is None:
         kwargs = {}
 
-    if inspect.isasyncgenfunction(func):
-        # Handle async generator
-        async_gen = cast(AsyncGenerator[T, Any], injectable_func(*args, **kwargs))
-        return run_coroutine_sync(anext(async_gen))
+    wrapped_func = _create_depends_function(func)
+    injectable_func = injectable(wrapped_func, use_cache=use_cache)
+    result = injectable_func(*args, **kwargs)  # type: ignore[no-untyped-call]
 
-    if inspect.isgeneratorfunction(func):
-        # Handle sync generator
-        gen = cast(Generator[T, Any, Any], injectable_func(*args, **kwargs))
-        return next(gen)
-
-    if inspect.iscoroutinefunction(func):
-        # Handle coroutine
-        coro = cast(Coroutine[Any, Any, T], injectable_func(*args, **kwargs))
-        return run_coroutine_sync(coro)
-
-    # Handle regular function
-    return cast(T, injectable_func(*args, **kwargs))
+    if inspect.isasyncgen(result):
+        return cast("T", run_coroutine_sync(anext(result)))
+    if inspect.isgenerator(result):
+        return cast("T", next(result))
+    if inspect.isawaitable(result):
+        return cast("T", run_coroutine_sync(result))  # type: ignore[arg-type]
+    return cast("T", result)
 
 
 async def cleanup_exit_stack_of_func(func: Callable[..., Any], *, raise_exception: bool = False) -> None:
@@ -152,7 +211,8 @@ async def cleanup_exit_stack_of_func(func: Callable[..., Any], *, raise_exceptio
     Raises:
         DependencyCleanupError: When cleanup fails and raise_exception is True
     """
-    await async_exit_stack_manager.cleanup_stack(func, raise_exception=raise_exception)
+    for wrapper in PROVIDER_TO_WRAPPER_FUNC_MAP.get(func, [func]):
+        await async_exit_stack_manager.cleanup_stack(wrapper, raise_exception=raise_exception)
 
 
 async def cleanup_all_exit_stacks(*, raise_exception: bool = False) -> None:
