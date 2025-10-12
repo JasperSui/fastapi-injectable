@@ -17,24 +17,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { python: "3.13", os: "ubuntu-latest", session: "pre-commit" }
+          - { python: "3.14", os: "ubuntu-latest", session: "pre-commit" }
+          - { python: "3.14", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.13", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.12", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.11", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.10", os: "ubuntu-latest", session: "mypy" }
+          - { python: "3.14", os: "ubuntu-latest", session: "tests" }
           - { python: "3.13", os: "ubuntu-latest", session: "tests" }
           - { python: "3.12", os: "ubuntu-latest", session: "tests" }
           - { python: "3.11", os: "ubuntu-latest", session: "tests" }
           - { python: "3.10", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.14", os: "windows-latest", session: "tests" }
           - { python: "3.13", os: "windows-latest", session: "tests" }
           - { python: "3.12", os: "windows-latest", session: "tests" }
           - { python: "3.11", os: "windows-latest", session: "tests" }
           - { python: "3.10", os: "windows-latest", session: "tests" }
+          - { python: "3.14", os: "macos-latest", session: "tests" }
           - { python: "3.13", os: "macos-latest", session: "tests" }
           - { python: "3.12", os: "macos-latest", session: "tests" }
           - { python: "3.11", os: "macos-latest", session: "tests" }
           - { python: "3.10", os: "macos-latest", session: "tests" }
-          - { python: "3.13", os: "ubuntu-latest", session: "docs-build" }
+          - { python: "3.14", os: "ubuntu-latest", session: "docs-build" }
 
     env:
       NOXSESSION: ${{ matrix.session }}
@@ -68,6 +72,7 @@ jobs:
         run: |
           pipx install --pip-args=--constraint=requirements/constraints.txt poetry
           poetry --version
+          poetry install
 
       - name: Install Nox
         run: |
@@ -128,7 +133,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Upgrade pip
         run: |
@@ -139,6 +144,7 @@ jobs:
         run: |
           pipx install --pip-args=--constraint=requirements/constraints.txt poetry
           poetry --version
+          poetry install
 
       - name: Install Nox
         run: |

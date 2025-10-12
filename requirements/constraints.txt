@@ -1,6 +1,6 @@
-pip==24.3.1
+pip==25.2
 setuptools
-nox==2024.10.9
-nox-poetry==1.0.3
-poetry==1.8.3
+nox==2025.05.01
+nox-poetry==1.2.0
+poetry==2.2.1
 virtualenv==20.28.0

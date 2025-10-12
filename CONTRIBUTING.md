@@ -37,10 +37,10 @@ Request features on the [Issue Tracker].
 
 ## How to set up your development environment
 
-You need to have Python 3.10, 3.11, 3.12, 3.13 at the same time, you can use [pyenv] to do so, once you have installed [pyenv], you can use the following command to install the required python versions:
+You need to have Python 3.10, 3.11, 3.12, 3.13, 3.14 at the same time, you can use [pyenv] to do so, once you have installed [pyenv], you can use the following command to install the required python versions:
 
 ```console
-$ pyenv install 3.10 3.11 3.12 3.13
+$ pyenv install 3.10 3.11 3.12, 3.13, 3.14
 ```
 
 And you also need the following packages:
