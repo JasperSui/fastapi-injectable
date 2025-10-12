@@ -2,6 +2,7 @@ import atexit
 import inspect
 import signal
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
+from functools import partial
 from typing import Annotated, Any, ParamSpec, TypeVar, cast, get_type_hints, overload
 
 from fastapi import Depends
@@ -42,21 +43,8 @@ def _create_depends_function(
 
     rt = hints.get("return", inspect.Signature.empty)
 
-    if rt in (inspect.Signature.empty, Any, None):  # pragma: no cover
-        msg = (
-            f"Cannot infer return type for provider {getattr(provider, '__name__', repr(provider))}. "
-            "Please add an explicit return annotation."
-        )
-        raise TypeError(msg)
-
     def inner(dep: T2) -> T2:
         return dep
-
-    # Provide the annotations FastAPI inspects at runtime
-    inner.__annotations__ = {
-        "dep": Annotated[rt, Depends(provider)],
-        "return": rt,
-    }
 
     # Nice signature for docs/inspection
     inner.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
@@ -64,7 +52,9 @@ def _create_depends_function(
             inspect.Parameter(
                 "dep",
                 kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                annotation=Annotated[rt, Depends(provider)],
+                annotation=Annotated[
+                    rt, Depends(provider)
+                ],  # this is the key part for FastAPI to resolve the dependency
             )
         ],
         return_annotation=rt,
@@ -182,15 +172,13 @@ def get_injected_obj(
         args = []
     if kwargs is None:
         kwargs = {}
+    if args or kwargs:
+        func = partial(func, *args, **kwargs)
 
     wrapped_func = _create_depends_function(func)
     injectable_func = injectable(wrapped_func, use_cache=use_cache)
-    result = injectable_func(*args, **kwargs)  # type: ignore[no-untyped-call]
+    result = injectable_func()  # type: ignore[no-untyped-call]
 
-    if inspect.isasyncgen(result):
-        return cast("T", run_coroutine_sync(anext(result)))
-    if inspect.isgenerator(result):
-        return cast("T", next(result))
     if inspect.isawaitable(result):
         return cast("T", run_coroutine_sync(result))  # type: ignore[arg-type]
     return cast("T", result)

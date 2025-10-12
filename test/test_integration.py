@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator, Generator
+from functools import partial
 from typing import Annotated, Any
 from unittest.mock import Mock
 
@@ -642,7 +643,6 @@ def test_get_injected_obj_with_dependency_override_sync(clean_exit_stack_manager
     mock_dependency.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_get_injected_obj_with_dependency_override_async(clean_exit_stack_manager: None) -> None:
     """Tests that get_injected_obj respects dependency_overrides for async dependencies."""
 
@@ -672,7 +672,6 @@ async def test_get_injected_obj_with_dependency_override_async(clean_exit_stack_
     mock_dependency.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_get_injected_obj_with_dependency_override_sync_generator(
     clean_exit_stack_manager: None,
 ) -> None:
@@ -718,7 +717,6 @@ async def test_get_injected_obj_with_dependency_override_sync_generator(
     override_sync_cleanup_mock.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_get_injected_obj_with_dependency_override_async_generator(
     clean_exit_stack_manager: None,
 ) -> None:
@@ -762,3 +760,220 @@ async def test_get_injected_obj_with_dependency_override_async_generator(
     await cleanup_all_exit_stacks()
     async_cleanup_mock_override.assert_not_called()
     override_async_cleanup_mock.assert_called_once()
+
+
+def test_get_injected_obj_with_class(
+    clean_exit_stack_manager: None,
+) -> None:
+    # Class should be supported since it's a callable
+    class DummyClass:
+        pass
+
+    result = get_injected_obj(DummyClass)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+
+def test_get_injected_obj_with_sync_function(
+    clean_exit_stack_manager: None,
+) -> None:
+    class DummyClass:
+        pass
+
+    def dummy_func() -> DummyClass:
+        return DummyClass()
+
+    result = get_injected_obj(dummy_func)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+
+def test_get_injected_obj_with_lambda_function(
+    clean_exit_stack_manager: None,
+) -> None:
+    # Lambda function should be supported since it's a callable
+    class DummyClass:
+        pass
+
+    result = get_injected_obj(lambda: DummyClass())
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+
+def test_get_injected_obj_with_partial_function(
+    clean_exit_stack_manager: None,
+) -> None:
+    # Partial function should be supported
+    class DummyClass:
+        def __init__(self, attr_1: int, attr_2: str) -> None:
+            self.attr_1 = attr_1
+            self.attr_2 = attr_2
+
+    def dummy_func(attr_1: int, attr_2: str) -> DummyClass:
+        return DummyClass(attr_1, attr_2)
+
+    partial_func = partial(dummy_func, attr_1=1, attr_2="test")
+
+    result = get_injected_obj(partial_func)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+    assert result.attr_1 == 1
+    assert result.attr_2 == "test"
+
+
+def test_get_injected_obj_sync_function_with_args_and_kwargs(
+    clean_exit_stack_manager: None,
+) -> None:
+    # Partial function should be supported
+    class DummyClass:
+        def __init__(self, attr_1: int, attr_2: str) -> None:
+            self.attr_1 = attr_1
+            self.attr_2 = attr_2
+
+    def dummy_func(attr_1: int, attr_2: str) -> DummyClass:
+        return DummyClass(attr_1, attr_2)
+
+    result = get_injected_obj(dummy_func, args=[1], kwargs={"attr_2": "test"})
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+    assert result.attr_1 == 1
+    assert result.attr_2 == "test"
+
+
+def test_get_injected_obj_with_async_function(
+    clean_exit_stack_manager: None,
+) -> None:
+    class DummyClass:
+        pass
+
+    async def dummy_func() -> DummyClass:
+        return DummyClass()
+
+    result = get_injected_obj(dummy_func)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+
+async def test_get_injected_obj_with_async_function_with_args_and_kwargs(
+    clean_exit_stack_manager: None,
+) -> None:
+    class DummyClass:
+        def __init__(self, attr_1: int, attr_2: str) -> None:
+            self.attr_1 = attr_1
+            self.attr_2 = attr_2
+
+    async def dummy_func(attr_1: int, attr_2: str) -> DummyClass:
+        return DummyClass(attr_1, attr_2)
+
+    result = get_injected_obj(dummy_func, args=[1], kwargs={"attr_2": "test"})
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+    assert result.attr_1 == 1
+    assert result.attr_2 == "test"
+
+
+def test_get_injected_obj_with_sync_generator(
+    clean_exit_stack_manager: None,
+) -> None:
+    cleanup_mock = Mock()
+
+    class DummyClass:
+        pass
+
+    def dummy_func() -> Generator[DummyClass, None, None]:
+        try:
+            yield DummyClass()
+        finally:
+            cleanup_mock()
+
+    result = get_injected_obj(dummy_func)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+    run_coroutine_sync(cleanup_all_exit_stacks())
+    cleanup_mock.assert_called_once()
+
+
+async def test_get_injected_obj_with_async_generator(
+    clean_exit_stack_manager: None,
+) -> None:
+    cleanup_mock = Mock()
+
+    class DummyClass:
+        pass
+
+    async def dummy_func() -> AsyncGenerator[DummyClass, None]:
+        try:
+            yield DummyClass()
+        finally:
+            cleanup_mock()
+
+    result = get_injected_obj(dummy_func)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+    await cleanup_all_exit_stacks()
+    cleanup_mock.assert_called_once()
+
+
+def test_get_injected_obj_with_sync_generator_with_args_and_kwargs(
+    clean_exit_stack_manager: None,
+) -> None:
+    cleanup_mock = Mock()
+
+    class DummyClass:
+        def __init__(self, attr_1: int, attr_2: str) -> None:
+            self.attr_1 = attr_1
+            self.attr_2 = attr_2
+
+    def dummy_func(attr_1: int, attr_2: str) -> Generator[DummyClass, None, None]:
+        try:
+            yield DummyClass(attr_1, attr_2)
+        finally:
+            cleanup_mock()
+
+    result = get_injected_obj(dummy_func, args=[1], kwargs={"attr_2": "test"})
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+    assert result.attr_1 == 1
+    assert result.attr_2 == "test"
+
+    run_coroutine_sync(cleanup_all_exit_stacks())
+    cleanup_mock.assert_called_once()
+
+
+async def test_get_injected_obj_with_async_generator_with_args_and_kwargs(
+    clean_exit_stack_manager: None,
+) -> None:
+    cleanup_mock = Mock()
+
+    class DummyClass:
+        def __init__(self, attr_1: int, attr_2: str) -> None:
+            self.attr_1 = attr_1
+            self.attr_2 = attr_2
+
+    async def dummy_func(attr_1: int, attr_2: str) -> AsyncGenerator[DummyClass, None]:
+        try:
+            yield DummyClass(attr_1, attr_2)
+        finally:
+            cleanup_mock()
+
+    result = get_injected_obj(dummy_func, args=[1], kwargs={"attr_2": "test"})
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+    assert result.attr_1 == 1
+    assert result.attr_2 == "test"
+
+    await cleanup_all_exit_stacks()
+    cleanup_mock.assert_called_once()
