@@ -11,6 +11,7 @@ from src.fastapi_injectable import register_app
 from src.fastapi_injectable.concurrency import loop_manager, run_coroutine_sync
 from src.fastapi_injectable.decorator import injectable
 from src.fastapi_injectable.util import (
+    async_get_injected_obj,
     cleanup_all_exit_stacks,
     cleanup_exit_stack_of_func,
     get_injected_obj,
@@ -977,3 +978,202 @@ async def test_get_injected_obj_with_async_generator_with_args_and_kwargs(
 
     await cleanup_all_exit_stacks()
     cleanup_mock.assert_called_once()
+
+
+async def test_async_get_injected_obj_with_async_function(
+    clean_exit_stack_manager: None,
+) -> None:
+    class DummyClass:
+        pass
+
+    async def dummy_func() -> DummyClass:
+        return DummyClass()
+
+    result = await async_get_injected_obj(dummy_func)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+
+async def test_async_get_injected_obj_with_async_function_with_args_and_kwargs(
+    clean_exit_stack_manager: None,
+) -> None:
+    class DummyClass:
+        def __init__(self, attr_1: int, attr_2: str) -> None:
+            self.attr_1 = attr_1
+            self.attr_2 = attr_2
+
+    async def dummy_func(attr_1: int, attr_2: str) -> DummyClass:
+        return DummyClass(attr_1, attr_2)
+
+    result = await async_get_injected_obj(dummy_func, args=[1], kwargs={"attr_2": "test"})
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+    assert result.attr_1 == 1
+    assert result.attr_2 == "test"
+
+
+async def test_async_get_injected_obj_with_async_generator(
+    clean_exit_stack_manager: None,
+) -> None:
+    cleanup_mock = Mock()
+
+    class DummyClass:
+        pass
+
+    async def dummy_func() -> AsyncGenerator[DummyClass, None]:
+        try:
+            yield DummyClass()
+        finally:
+            cleanup_mock()
+
+    result = await async_get_injected_obj(dummy_func)
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+
+    await cleanup_all_exit_stacks()
+    cleanup_mock.assert_called_once()
+
+
+async def test_async_get_injected_obj_with_async_generator_with_args_and_kwargs(
+    clean_exit_stack_manager: None,
+) -> None:
+    cleanup_mock = Mock()
+
+    class DummyClass:
+        def __init__(self, attr_1: int, attr_2: str) -> None:
+            self.attr_1 = attr_1
+            self.attr_2 = attr_2
+
+    async def dummy_func(attr_1: int, attr_2: str) -> AsyncGenerator[DummyClass, None]:
+        try:
+            yield DummyClass(attr_1, attr_2)
+        finally:
+            cleanup_mock()
+
+    result = await async_get_injected_obj(dummy_func, args=[1], kwargs={"attr_2": "test"})
+
+    assert result is not None
+    assert isinstance(result, DummyClass)
+    assert result.attr_1 == 1
+    assert result.attr_2 == "test"
+
+    await cleanup_all_exit_stacks()
+    cleanup_mock.assert_called_once()
+
+
+async def test_async_get_injected_obj_with_dependencies(
+    clean_exit_stack_manager: None,
+) -> None:
+    class Service:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    async def get_base_value() -> str:
+        return "base"
+
+    async def get_service(base: Annotated[str, Depends(get_base_value)]) -> Service:
+        return Service(value=f"{base}_service")
+
+    service = await async_get_injected_obj(get_service)
+    assert isinstance(service, Service)
+    assert service.value == "base_service"
+
+
+async def test_async_get_injected_obj_in_running_loop(
+    clean_exit_stack_manager: None,
+) -> None:
+    """Test that async_get_injected_obj works in an already running event loop.
+
+    This is the key test case that demonstrates the fix for issue #173.
+    """
+
+    class Service:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    async def get_service() -> Service:
+        return Service(value="loop_service")
+
+    # Simulate a running loop scenario (like Kafka consumer callback)
+    async def consumer_callback() -> Service:
+        # This would fail with get_injected_obj() but works with async_get_injected_obj()
+        return await async_get_injected_obj(get_service)
+
+    # The test itself is running in an event loop
+    service = await consumer_callback()
+    assert isinstance(service, Service)
+    assert service.value == "loop_service"
+
+
+async def test_async_get_injected_obj_with_nested_dependencies(
+    clean_exit_stack_manager: None,
+) -> None:
+    class Service:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    async def get_config() -> dict[str, str]:
+        return {"prefix": "nested"}
+
+    async def get_base_service(config: Annotated[dict[str, str], Depends(get_config)]) -> Service:
+        return Service(value=config["prefix"])
+
+    async def get_dependent_service(
+        base: Annotated[Service, Depends(get_base_service)],
+    ) -> Service:
+        return Service(value=f"{base.value}_dependent")
+
+    service = await async_get_injected_obj(get_dependent_service)
+    assert isinstance(service, Service)
+    assert service.value == "nested_dependent"
+
+
+async def test_async_get_injected_obj_with_cache(
+    clean_exit_stack_manager: None,
+) -> None:
+    call_count = 0
+
+    class Service:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    async def get_service() -> Service:
+        nonlocal call_count
+        call_count += 1
+        return Service(value=f"cached_{call_count}")
+
+    # First call with cache enabled
+    service1 = await async_get_injected_obj(get_service, use_cache=True)
+    assert service1.value == "cached_1"
+
+    # Second call should use cache
+    service2 = await async_get_injected_obj(get_service, use_cache=True)
+    assert service2.value == "cached_1"
+    assert call_count == 1  # Should still be 1 because of caching
+
+
+async def test_async_get_injected_obj_without_cache(
+    clean_exit_stack_manager: None,
+) -> None:
+    call_count = 0
+
+    class Service:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    async def get_service() -> Service:
+        nonlocal call_count
+        call_count += 1
+        return Service(value=f"uncached_{call_count}")
+
+    # First call without cache
+    service1 = await async_get_injected_obj(get_service, use_cache=False)
+    assert service1.value == "uncached_1"
+
+    # Second call should create new instance
+    service2 = await async_get_injected_obj(get_service, use_cache=False)
+    assert service2.value == "uncached_2"
+    assert call_count == 2

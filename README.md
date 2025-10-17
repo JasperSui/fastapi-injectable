@@ -149,6 +149,66 @@ result = get_injected_obj(process_data)
 print(result) # Output: 'data'
 ```
 
+### Async Function-based Approach (For Running Event Loops)
+
+When you're working in an async context where an event loop is already running (like Kafka consumers, streaming frameworks, or async callbacks), you need to use `async_get_injected_obj()` instead of `get_injected_obj()`.
+
+**Why?** The regular `get_injected_obj()` uses `loop.run_until_complete()` internally, which fails with `RuntimeError: This event loop is already running` when called from within an already-running event loop. The async version directly awaits coroutines instead, making it safe to use in these scenarios.
+
+**When to use `async_get_injected_obj()`:**
+- Inside async callbacks (e.g., Kafka/kstreams consumers)
+- In async background tasks that are already running in an event loop
+- Within async functions where an event loop is active
+- Any scenario where you get "This event loop is already running" errors
+
+**When to use `get_injected_obj()`:**
+- In synchronous code
+- In scripts or CLI tools without a running loop
+- In situations where you need to block and wait for async dependencies
+
+Here's how to use it:
+
+```python
+from fastapi_injectable.util import async_get_injected_obj
+
+class MessageProcessor:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+    async def process(self, message: str) -> str:
+        return f"Processed: {message}"
+
+async def get_processor(db: Annotated[Database, Depends(get_database)]) -> MessageProcessor:
+    return MessageProcessor(db)
+
+# In a Kafka consumer or async callback
+async def consume(message: str):
+    # This works in a running event loop!
+    processor = await async_get_injected_obj(get_processor)
+    result = await processor.process(message)
+    print(result)
+
+# In an async streaming framework
+from kstreams import ConsumerRecord, Stream
+
+stream = Stream("my-topic")
+
+@stream.consume
+async def process_stream(record: ConsumerRecord):
+    # Event loop is already running here
+    processor = await async_get_injected_obj(get_processor)
+    await processor.process(record.value)
+```
+
+**Key differences:**
+
+| Feature    | `get_injected_obj()`                         | `async_get_injected_obj()` |
+| ---------- | -------------------------------------------- | -------------------------- |
+| Usage      | Synchronous code                             | Async contexts             |
+| Returns    | Direct value (blocks if async)               | Must be awaited            |
+| Event loop | Creates/uses loop via `run_until_complete()` | Works with running loop    |
+| Use case   | Scripts, CLI, sync functions                 | Async callbacks, consumers |
+
 ### Manual Overrides
 
 Sometimes you want to use FastAPI’s dependency injection system, but still explicitly pass certain arguments yourself.
@@ -617,6 +677,7 @@ Please refer to the [Real-world Examples](https://fastapi-injectable.readthedocs
 - [Does it work with all FastAPI dependency types?](#does-it-work-with-all-fastapi-dependency-types)
 - [What happens to dependency cleanup in long-running processes?](#what-happens-to-dependency-cleanup-in-long-running-processes)
 - [Can I mix sync and async dependencies?](#can-i-mix-sync-and-async-dependencies)
+- [When should I use `async_get_injected_obj()` vs `get_injected_obj()`?](#when-should-i-use-async_get_injected_obj-vs-get_injected_obj)
 - [Are type hints fully supported for `injectable()` and `get_injected_obj()`?](#are-type-hints-fully-supported-for-injectable-and-get_injected_obj)
 - [How does caching work?](#how-does-caching-work)
 - [Is it production-ready?](#is-it-production-ready)
@@ -677,6 +738,20 @@ A: You have three options:
 ### Can I mix sync and async dependencies?
 
 A: Yes! You can freely mix them. For running async code in sync contexts, use the provided `run_coroutine_sync()` utility.
+
+<hr>
+
+### When should I use `async_get_injected_obj()` vs `get_injected_obj()`?
+
+A: Use `async_get_injected_obj()` when you're in an async context with a **running event loop** (like Kafka consumers, async callbacks, or streaming frameworks). Use `get_injected_obj()` in **synchronous code** or when no event loop is running.
+
+If you see `RuntimeError: This event loop is already running`, switch to `async_get_injected_obj()`.
+
+**Quick rule of thumb:**
+- Already in an `async` function with a running loop? → Use `async_get_injected_obj()`
+- In sync code or scripts? → Use `get_injected_obj()`
+
+See [Async Function-based Approach](#async-function-based-approach-for-running-event-loops) for detailed examples.
 
 <hr>
 

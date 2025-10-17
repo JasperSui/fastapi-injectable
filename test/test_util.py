@@ -1,5 +1,5 @@
 import signal
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -31,6 +31,20 @@ def mock_dependency_cache() -> Generator[Mock, None, None]:
     with patch("src.fastapi_injectable.util.dependency_cache") as mock:
         mock.clear = AsyncMock()
         yield mock
+
+
+@pytest.fixture(autouse=True)
+async def clear_registered_app() -> AsyncGenerator[None, None]:
+    """Clear any registered FastAPI app before and after each test."""
+    # Clear before test
+    from src.fastapi_injectable import main
+
+    async with main._app_lock:
+        main._app = None
+    yield
+    # Clear after test
+    async with main._app_lock:
+        main._app = None
 
 
 async def test_cleanup_exit_stack_of_func(mock_async_exit_stack_manager: Mock) -> None:

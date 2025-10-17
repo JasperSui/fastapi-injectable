@@ -70,6 +70,59 @@ def _create_depends_function(
     return inner
 
 
+def _create_async_depends_function(
+    provider: Callable[..., Any],
+) -> Callable[..., Any]:
+    """Build an async pass-through dependency for FastAPI.
+
+    Similar to _create_depends_function but returns an async function,
+    which causes the injectable decorator to use the async_wrapper path
+    that directly awaits resolve_dependencies() without using run_coroutine_sync().
+
+    This is specifically for async_get_injected_obj() to work in running event loops.
+    """
+    # Runtime: resolve the *concrete* return type for FastAPI's inspection
+    try:
+        hints = get_type_hints(provider, include_extras=True)
+    except Exception:  # pragma: no cover # noqa: BLE001
+        hints = {}
+
+    rt = hints.get("return", inspect.Signature.empty)
+
+    async def inner(dep: T2) -> T2:
+        # If the dependency is awaitable (async function), await it
+        if inspect.isawaitable(dep):
+            return await dep  # type: ignore[no-any-return]
+        # If it's an async generator, get the first value
+        if inspect.isasyncgen(dep):
+            async for value in dep:  # pragma: no cover
+                return value  # type: ignore[no-any-return]
+        return dep
+
+    # Nice signature for docs/inspection
+    inner.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
+        parameters=[
+            inspect.Parameter(
+                "dep",
+                kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                annotation=Annotated[
+                    rt, Depends(provider)
+                ],  # this is the key part for FastAPI to resolve the dependency
+            )
+        ],
+        return_annotation=rt,
+    )
+
+    inner.__name__ = f"{getattr(provider, '__name__', 'provider')}_async_extractor"
+
+    # Store the wrapper function for cleanup the provider later
+    if provider not in PROVIDER_TO_WRAPPER_FUNC_MAP:
+        PROVIDER_TO_WRAPPER_FUNC_MAP[provider] = []
+    PROVIDER_TO_WRAPPER_FUNC_MAP[provider].append(inner)
+
+    return inner
+
+
 @overload
 def get_injected_obj(
     func: Callable[..., Awaitable[T]],
@@ -182,6 +235,95 @@ def get_injected_obj(
     if inspect.isawaitable(result):
         return cast("T", run_coroutine_sync(result))  # type: ignore[arg-type]
     return cast("T", result)
+
+
+@overload
+async def async_get_injected_obj(
+    func: Callable[..., Awaitable[T]],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+) -> T: ...
+
+
+@overload
+async def async_get_injected_obj(
+    func: Callable[..., AsyncGenerator[T, Any]],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+) -> T: ...
+
+
+async def async_get_injected_obj(
+    func: Callable[P, Awaitable[T]] | Callable[P, AsyncGenerator[T, Any]],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+) -> T:
+    """Async version of get_injected_obj() for use in running event loops.
+
+    Use this function when you need to inject dependencies from within async
+    contexts like Kafka consumers, async callbacks, or other scenarios where
+    an event loop is already running.
+
+    This function only accepts async functions (coroutines) and async generators.
+    For sync functions, use get_injected_obj() instead.
+
+    Args:
+        func: The async dependency function to inject. Must be:
+            - An async function (coroutine)
+            - An async generator
+        args: Positional arguments to pass to the dependency function.
+        kwargs: Keyword arguments to pass to the dependency function.
+        use_cache: Whether to cache resolved dependencies. Defaults to True.
+
+    Returns:
+        The first value yielded/returned by the dependency function after injection.
+
+    Examples:
+        ```python
+        # In an async callback (e.g., Kafka consumer)
+        async def get_service() -> Service:
+            return Service()
+
+        async def consume(message):
+            service = await async_get_injected_obj(get_service)
+            await service.process(message)
+
+        # With an async generator (for cleanup)
+        async def get_db() -> AsyncGenerator[Database, None]:
+            db = Database()
+            yield db
+            await db.close()
+
+        db = await async_get_injected_obj(get_db)
+        ```
+
+    Notes:
+        - This function must be called from an async context (use await)
+        - Only accepts async functions and async generators
+        - For sync functions, use get_injected_obj() instead
+        - For async generators, only the first yielded value is returned
+        - Cleanup code in generators will be executed when calling cleanup functions
+        - Uses FastAPI's dependency injection system under the hood
+        - Unlike get_injected_obj(), this works in already-running event loops
+    """
+    if args is None:
+        args = []
+    if kwargs is None:
+        kwargs = {}
+    if args or kwargs:
+        func = partial(func, *args, **kwargs)
+
+    # Use async version to trigger async_wrapper path in injectable decorator
+    wrapped_func = _create_async_depends_function(func)
+    injectable_func = injectable(wrapped_func, use_cache=use_cache)
+    coro = cast("Callable[..., Awaitable[T]]", injectable_func)()
+    return await coro
 
 
 async def cleanup_exit_stack_of_func(func: Callable[..., Any], *, raise_exception: bool = False) -> None:
