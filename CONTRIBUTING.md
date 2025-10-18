@@ -37,10 +37,10 @@ Request features on the [Issue Tracker].
 
 ## How to set up your development environment
 
-You need to have Python 3.10, 3.11, 3.12, 3.13, 3.14 installed. With uv, you can easily install and manage multiple Python versions:
+You need to have Python 3.10, 3.11, 3.12, 3.13, 3.13t, 3.14, 3.14t installed. With uv, you can easily install and manage multiple Python versions:
 
 ```console
-$ uv python install 3.10 3.11 3.12 3.13 3.14
+$ uv python install 3.10 3.11 3.12 3.13 3.13t 3.14 3.14t
 ```
 
 **Note:** uv will be installed automatically when you run the commands above. Alternatively, you can install uv manually by following the instructions on the [official website](https://astral.sh/uv/install.sh). This project requires uv version 0.9.2 or higher. You can verify your version with `uv --version`.

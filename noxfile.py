@@ -8,8 +8,9 @@ from textwrap import dedent
 import nox
 
 package = "fastapi_injectable"
-python_versions = ["3.10", "3.11", "3.12", "3.13", "3.14"]
-latest_python_version = python_versions[-1]
+python_versions = ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
+python_versions_without_free_threaded = [version for version in python_versions if not version.endswith("t")]
+latest_python_version = python_versions_without_free_threaded[-1]
 nox.needs_version = ">= 2025.05.01"
 nox.options.sessions = (
     "pre-commit",
@@ -108,7 +109,7 @@ def precommit(session: nox.Session) -> None:
         activate_virtualenv_in_precommit_hooks(session)
 
 
-@nox.session(python=python_versions)
+@nox.session(python=python_versions_without_free_threaded)
 def mypy(session: nox.Session) -> None:
     """Type-check using mypy."""
     args = session.posargs or ["src", "test", "docs/conf.py"]
