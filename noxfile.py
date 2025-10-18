@@ -7,18 +7,6 @@ from textwrap import dedent
 
 import nox
 
-try:
-    from nox_poetry import Session, session
-except ImportError:
-    message = f"""\
-    Nox failed to import the 'nox-poetry' package.
-
-    Please install it using the following command:
-
-    {sys.executable} -m pip install nox-poetry"""
-    raise SystemExit(dedent(message)) from None
-
-
 package = "fastapi_injectable"
 python_versions = ["3.10", "3.11", "3.12", "3.13", "3.14"]
 latest_python_version = python_versions[-1]
@@ -29,9 +17,10 @@ nox.options.sessions = (
     "tests",
     "docs-build",
 )
+nox.options.default_venv_backend = "uv"
 
 
-def activate_virtualenv_in_precommit_hooks(session: Session) -> None:
+def activate_virtualenv_in_precommit_hooks(session: nox.Session) -> None:
     """Activate virtualenv in hooks installed by pre-commit.
 
     This function patches git hooks installed by pre-commit to activate the
@@ -101,8 +90,8 @@ def activate_virtualenv_in_precommit_hooks(session: Session) -> None:
                 break
 
 
-@session(name="pre-commit", python=latest_python_version)
-def precommit(session: Session) -> None:
+@nox.session(name="pre-commit", python=latest_python_version)
+def precommit(session: nox.Session) -> None:
     """Lint using pre-commit."""
     args = session.posargs or [
         "run",
@@ -119,8 +108,8 @@ def precommit(session: Session) -> None:
         activate_virtualenv_in_precommit_hooks(session)
 
 
-@session(python=python_versions)
-def mypy(session: Session) -> None:
+@nox.session(python=python_versions)
+def mypy(session: nox.Session) -> None:
     """Type-check using mypy."""
     args = session.posargs or ["src", "test", "docs/conf.py"]
     session.install(".")
@@ -130,8 +119,8 @@ def mypy(session: Session) -> None:
         session.run("mypy", f"--python-executable={sys.executable}", "noxfile.py")
 
 
-@session(python=python_versions)
-def tests(session: Session) -> None:
+@nox.session(python=python_versions)
+def tests(session: nox.Session) -> None:
     """Run the test suite."""
     session.install(".")
     session.install("coverage[toml]", "pytest", "pytest-asyncio", "httpx")
@@ -142,8 +131,8 @@ def tests(session: Session) -> None:
             session.notify("coverage", posargs=[])
 
 
-@session(python=latest_python_version)
-def coverage(session: Session) -> None:
+@nox.session(python=latest_python_version)
+def coverage(session: nox.Session) -> None:
     """Produce the coverage report."""
     args = session.posargs or ["report"]
 
@@ -155,8 +144,8 @@ def coverage(session: Session) -> None:
     session.run("coverage", *args)
 
 
-@session(name="docs-build", python=latest_python_version)
-def docs_build(session: Session) -> None:
+@nox.session(name="docs-build", python=latest_python_version)
+def docs_build(session: nox.Session) -> None:
     """Build the documentation."""
     args = session.posargs or ["docs", "docs/_build"]
     if not session.posargs and "FORCE_COLOR" in os.environ:
@@ -172,8 +161,8 @@ def docs_build(session: Session) -> None:
     session.run("sphinx-build", *args)
 
 
-@session(python=latest_python_version)
-def docs(session: Session) -> None:
+@nox.session(python=latest_python_version)
+def docs(session: nox.Session) -> None:
     """Build and serve the documentation with live reloading on file changes."""
     args = session.posargs or ["--open-browser", "docs", "docs/_build"]
     session.install(".")
