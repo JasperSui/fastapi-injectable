@@ -37,60 +37,56 @@ Request features on the [Issue Tracker].
 
 ## How to set up your development environment
 
-You need to have Python 3.10, 3.11, 3.12, 3.13, 3.14 at the same time, you can use [pyenv] to do so, once you have installed [pyenv], you can use the following command to install the required python versions:
+You need to have Python 3.10, 3.11, 3.12, 3.13, 3.14 installed. With uv, you can easily install and manage multiple Python versions:
 
 ```console
-$ pyenv install 3.10 3.11 3.12, 3.13, 3.14
+$ uv python install 3.10 3.11 3.12 3.13 3.14
 ```
 
-And you also need the following packages:
+**Note:** uv will be installed automatically when you run the commands above. Alternatively, you can install uv manually by following the instructions on the [official website](https://astral.sh/uv/install.sh). This project requires uv version 0.9.2 or higher. You can verify your version with `uv --version`.
 
-- [Poetry]
-- [Nox]
-- [nox-poetry]
-
-
-If you don't have any of these, you can use pip to install them directly:
-```console
-$ pip install -r requirements/dev.txt # Optional if you already have them
-```
-
-And then install the package with development requirements:
+Install dependencies:
 
 ```console
-$ poetry install
+$ uv sync
 ```
 
-You can now run an interactive Python session
+**About dependency management:**
+- Dependencies are defined in `pyproject.toml` under `[dependency-groups]`
+- `uv.lock` is the lockfile (similar to what `poetry.lock` was)
+- After modifying dependencies in `pyproject.toml`, run `uv lock` to update the lockfile
+- Run `uv sync` to install dependencies from the lockfile
+- All development tools (including [Nox]) are managed by uv
+
+You can now run an interactive Python session or use development tools:
 
 ```console
-$ poetry run python
+$ uv run python
+$ uv run nox
 ```
 
-[poetry]: https://python-poetry.org/
+[uv]: https://astral.sh/uv
 [nox]: https://nox.thea.codes/
-[nox-poetry]: https://nox-poetry.readthedocs.io/
-[pyenv]: https://github.com/pyenv/pyenv
 
 ## How to test the project
 
 Run the full test suite:
 
 ```console
-$ nox
+$ uv run nox
 ```
 
 List the available Nox sessions:
 
 ```console
-$ nox --list-sessions
+$ uv run nox --list-sessions
 ```
 
 You can also run a specific Nox session.
 For example, invoke the unit test suite like this:
 
 ```console
-$ nox --session=tests
+$ uv run nox --session=tests
 ```
 
 Unit tests are located in the _test_ directory,
@@ -113,7 +109,7 @@ Feel free to submit early, though—we can always iterate on this.
 To run linting and code formatting checks before committing your change, you can install pre-commit as a Git hook by running the following command:
 
 ```console
-$ nox --session=pre-commit -- install
+$ uv run nox --session=pre-commit -- install
 ```
 
 It is recommended to open an issue before starting work on anything.
@@ -132,7 +128,7 @@ If you get errors about `_sqlite3` module not found:
 E   ModuleNotFoundError: No module named '_sqlite3
 ```
 
-You may follow this [StackOverflow solution](https://stackoverflow.com/a/76266406) to fix it by install `sqlite3-dev` in your os first, then `pyenv install` again.
+You may follow this [StackOverflow solution](https://stackoverflow.com/a/76266406) to fix it by install `sqlite3-dev` in your os first, then run `uv python install <version>` again.
 
 [pull request]: https://github.com/JasperSui/fastapi-injectable/pulls
 
