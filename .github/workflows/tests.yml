@@ -24,17 +24,23 @@ jobs:
           - { python: "3.11", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.10", os: "ubuntu-latest", session: "mypy" }
           - { python: "3.14", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.14t", os: "ubuntu-latest", session: "tests" }
           - { python: "3.13", os: "ubuntu-latest", session: "tests" }
+          - { python: "3.13t", os: "ubuntu-latest", session: "tests" }
           - { python: "3.12", os: "ubuntu-latest", session: "tests" }
           - { python: "3.11", os: "ubuntu-latest", session: "tests" }
           - { python: "3.10", os: "ubuntu-latest", session: "tests" }
           - { python: "3.14", os: "windows-latest", session: "tests" }
+          - { python: "3.14t", os: "windows-latest", session: "tests" }
           - { python: "3.13", os: "windows-latest", session: "tests" }
+          - { python: "3.13t", os: "windows-latest", session: "tests" }
           - { python: "3.12", os: "windows-latest", session: "tests" }
           - { python: "3.11", os: "windows-latest", session: "tests" }
           - { python: "3.10", os: "windows-latest", session: "tests" }
           - { python: "3.14", os: "macos-latest", session: "tests" }
+          - { python: "3.14t", os: "macos-latest", session: "tests" }
           - { python: "3.13", os: "macos-latest", session: "tests" }
+          - { python: "3.13t", os: "macos-latest", session: "tests" }
           - { python: "3.12", os: "macos-latest", session: "tests" }
           - { python: "3.11", os: "macos-latest", session: "tests" }
           - { python: "3.10", os: "macos-latest", session: "tests" }

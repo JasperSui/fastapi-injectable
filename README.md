@@ -83,7 +83,7 @@ print(result) # Output: 'data'
 
 ### Requirements
 
-- Python `3.10` or higher
+- Python `3.10` or higher (including `3.13t`, `3.14t` free-threaded builds)
 - FastAPI `0.112.4` or higher
 
 <!-- homepage-end -->
