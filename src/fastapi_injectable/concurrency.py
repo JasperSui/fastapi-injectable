@@ -47,8 +47,22 @@ class LoopManager:
         if self._isolated_loop is not None:
             return self._isolated_loop
         with self._lock:
-            self._isolated_loop = asyncio.new_event_loop()
+            self._isolated_loop = asyncio.get_event_loop_policy().new_event_loop()
         return self._isolated_loop
+
+    def _get_or_create_current_loop(self) -> asyncio.AbstractEventLoop:
+        """Get or create event loop for current thread.
+
+        Compatible with Python 3.12+ and 3.14+. Attempts to get loop via policy,
+        falls back to creating new loop if RuntimeError is raised.
+
+        Returns:
+            Event loop instance.
+        """
+        try:
+            return asyncio.get_event_loop_policy().get_event_loop()
+        except RuntimeError:
+            return asyncio.get_event_loop_policy().new_event_loop()
 
     @property
     def loop_strategy(self) -> Literal["current", "isolated", "background_thread"]:
@@ -65,20 +79,16 @@ class LoopManager:
 
         Returns:
             The appropriate event loop based on strategy or input.
-
-        Raises:
-            RuntimeError: If using 'current' strategy and no loop exists in current thread.
         """
         if self._loop_strategy == "current":
-            # Use the current thread's event loop
-            return asyncio.get_event_loop()
+            try:
+                return asyncio.get_running_loop()
+            except RuntimeError:
+                return self._get_or_create_current_loop()
 
         if self._loop_strategy == "isolated":
-            # Get or create isolated loop
             return self._get_isolated_loop()
 
-        # "background_thread"
-        # Get or create background thread loop
         return self._get_background_loop()
 
     def _wait_with_retries(self, future: concurrent.futures.Future[T]) -> T:

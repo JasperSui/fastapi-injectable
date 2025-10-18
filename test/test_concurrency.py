@@ -38,36 +38,76 @@ def test_loop_strategy_property(loop_manager_instance: LoopManager) -> None:
     assert loop_manager_instance.loop_strategy == "background_thread"
 
 
-@patch("src.fastapi_injectable.concurrency.asyncio.get_event_loop")
-def test_get_loop_current_strategy(mock_get_event_loop: Mock, loop_manager_instance: LoopManager) -> None:
+@patch("src.fastapi_injectable.concurrency.asyncio.get_running_loop")
+def test_get_loop_current_strategy(mock_get_running_loop: Mock, loop_manager_instance: LoopManager) -> None:
     """Test get_loop with 'current' strategy."""
     mock_loop = Mock()
-    mock_get_event_loop.return_value = mock_loop
+    mock_get_running_loop.return_value = mock_loop
     loop_manager_instance.set_loop_strategy("current")
 
     result = loop_manager_instance.get_loop()
 
-    mock_get_event_loop.assert_called_once()
+    mock_get_running_loop.assert_called_once()
     assert result == mock_loop
 
 
-@patch("src.fastapi_injectable.concurrency.asyncio.new_event_loop")
-def test_get_loop_isolated_strategy(mock_new_event_loop: Mock, loop_manager_instance: LoopManager) -> None:
+def test_get_loop_current_strategy_fallback(loop_manager_instance: LoopManager) -> None:
+    """Test get_loop with 'current' strategy when no running loop exists (Python 3.14+ compatibility)."""
+    mock_loop = Mock()
+    mock_policy = Mock()
+    mock_policy.get_event_loop.return_value = mock_loop
+
+    with (
+        patch("src.fastapi_injectable.concurrency.asyncio.get_running_loop", side_effect=RuntimeError),
+        patch("src.fastapi_injectable.concurrency.asyncio.get_event_loop_policy", return_value=mock_policy),
+    ):
+        loop_manager_instance.set_loop_strategy("current")
+
+        result = loop_manager_instance.get_loop()
+
+        assert result == mock_loop
+        mock_policy.get_event_loop.assert_called_once()
+
+
+def test_get_loop_current_strategy_fallback_create_new(loop_manager_instance: LoopManager) -> None:
+    """Test get_loop with 'current' strategy when policy.get_event_loop() raises RuntimeError (Python 3.14+)."""
+    mock_loop = Mock()
+    mock_policy = Mock()
+    mock_policy.get_event_loop.side_effect = RuntimeError
+    mock_policy.new_event_loop.return_value = mock_loop
+
+    with (
+        patch("src.fastapi_injectable.concurrency.asyncio.get_running_loop", side_effect=RuntimeError),
+        patch("src.fastapi_injectable.concurrency.asyncio.get_event_loop_policy", return_value=mock_policy),
+    ):
+        loop_manager_instance.set_loop_strategy("current")
+
+        result = loop_manager_instance.get_loop()
+
+        assert result == mock_loop
+        mock_policy.get_event_loop.assert_called_once()
+        mock_policy.new_event_loop.assert_called_once()
+
+
+def test_get_loop_isolated_strategy(loop_manager_instance: LoopManager) -> None:
     """Test get_loop with 'isolated' strategy."""
     mock_loop = Mock()
-    mock_new_event_loop.return_value = mock_loop
-    loop_manager_instance.set_loop_strategy("isolated")
+    mock_policy = Mock()
+    mock_policy.new_event_loop.return_value = mock_loop
 
-    # First call should create a new loop
-    result1 = loop_manager_instance.get_loop()
-    assert result1 == mock_loop
-    mock_new_event_loop.assert_called_once()
+    with patch("src.fastapi_injectable.concurrency.asyncio.get_event_loop_policy", return_value=mock_policy):
+        loop_manager_instance.set_loop_strategy("isolated")
 
-    # Second call should reuse the existing loop
-    mock_new_event_loop.reset_mock()
-    result2 = loop_manager_instance.get_loop()
-    assert result2 == mock_loop
-    mock_new_event_loop.assert_not_called()
+        # First call should create a new loop
+        result1 = loop_manager_instance.get_loop()
+        assert result1 == mock_loop
+        mock_policy.new_event_loop.assert_called_once()
+
+        # Second call should reuse the existing loop
+        mock_policy.new_event_loop.reset_mock()
+        result2 = loop_manager_instance.get_loop()
+        assert result2 == mock_loop
+        mock_policy.new_event_loop.assert_not_called()
 
 
 @patch("src.fastapi_injectable.concurrency.threading.Thread")
