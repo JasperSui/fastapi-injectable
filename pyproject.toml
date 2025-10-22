@@ -3,7 +3,7 @@ name = "fastapi-injectable"
 version = "1.4.2"
 description = "Allow you to painlessly use dependency injection mechanism (`Depends`) of FastAPI outside the FastAPI routes"
 authors = [{ name = "Jasper Sui", email = "suiyang03@gmail.com" }]
-requires-python = ">=3.10,<3.15"
+requires-python = ">=3.10"
 readme = "README.md"
 license = "MIT"
 classifiers = [
