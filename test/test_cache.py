@@ -23,15 +23,15 @@ async def test_clear_non_empty_cache(cache: DependencyCache) -> None:
     def func() -> None:
         return None
 
-    cache._cache[(func, ("key",))] = "value"
-    assert cache.get() == {(func, ("key",)): "value"}
+    cache._cache[(func, ("key",), "scope")] = "value"
+    assert cache.get() == {(func, ("key",), "scope"): "value"}
     await cache.clear()
     assert cache.get() == {}
 
 
 async def test_clear_lock(cache: DependencyCache) -> None:
     # Test that clear acquires the lock properly
-    cache._cache = {(lambda: None, ("key",)): "value"}
+    cache._cache = {(lambda: None, ("key",), "scope"): "value"}
 
     async with cache._lock:
         # Try to clear while lock is held; should not deadlock
