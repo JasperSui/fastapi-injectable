@@ -5,10 +5,10 @@ from typing import Any
 
 class DependencyCache:
     def __init__(self) -> None:
-        self._cache: dict[tuple[Callable[..., Any], tuple[str]], Any] = {}
+        self._cache: dict[tuple[Callable[..., Any] | None, tuple[str, ...], str], Any] = {}
         self._lock = asyncio.Lock()
 
-    def get(self) -> dict[tuple[Callable[..., Any], tuple[str]], Any]:
+    def get(self) -> dict[tuple[Callable[..., Any] | None, tuple[str, ...], str], Any]:
         """Get the current cache."""
         return self._cache
 
