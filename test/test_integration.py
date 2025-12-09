@@ -1,4 +1,5 @@
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, AsyncIterator, Generator
+from contextlib import asynccontextmanager
 from functools import partial
 from typing import Annotated, Any
 from unittest.mock import Mock
@@ -57,7 +58,9 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all_
         yield mayor
         mayor.cleanup()
 
-    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Generator[Capital, None, None]:
+    def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> Generator[Capital, None, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -94,7 +97,9 @@ def test_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_all
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -131,7 +136,9 @@ def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up_by_cl
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -168,7 +175,9 @@ def test_sync_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanu
         yield mayor
         mayor.cleanup()
 
-    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Generator[Capital, None, None]:
+    def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> Generator[Capital, None, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -204,7 +213,9 @@ def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_clean
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -240,7 +251,9 @@ def test_sync_and_async_generators_with_get_injected_obj_be_correctly_cleaned_up
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -276,7 +289,9 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit
         yield mayor
         mayor.cleanup()
 
-    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Generator[Capital, None, None]:
+    def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> Generator[Capital, None, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -286,7 +301,9 @@ def test_sync_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exit
         return Country(capital)
 
     @injectable(use_cache=False)
-    def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    def another_get_country(
+        capital: Annotated[Capital, Depends(get_capital)],
+    ) -> Country:
         return Country(capital)
 
     country_1: Country = get_country()  # type: ignore  # noqa: PGH003
@@ -330,7 +347,9 @@ def test_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exi
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -340,7 +359,9 @@ def test_async_generators_with_injectable_be_correctly_cleaned_up_by_cleanup_exi
         return Country(capital)
 
     @injectable(use_cache=False)
-    def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    def another_get_country(
+        capital: Annotated[Capital, Depends(get_capital)],
+    ) -> Country:
         return Country(capital)
 
     country_1: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
@@ -384,7 +405,9 @@ def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up_by_cl
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -394,7 +417,9 @@ def test_sync_and_async_generators_with_injectable_be_correctly_cleaned_up_by_cl
         return Country(capital)
 
     @injectable(use_cache=False)
-    def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    def another_get_country(
+        capital: Annotated[Capital, Depends(get_capital)],
+    ) -> Country:
         return Country(capital)
 
     country_1: Country = run_coroutine_sync(get_country())  # type: ignore  # noqa: PGH003
@@ -438,7 +463,9 @@ def test_sync_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanu
         yield mayor
         mayor.cleanup()
 
-    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Generator[Capital, None, None]:
+    def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> Generator[Capital, None, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -446,7 +473,9 @@ def test_sync_generators_with_get_injected_obj_be_correctly_cleaned_up_by_cleanu
     def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    def another_get_country(
+        capital: Annotated[Capital, Depends(get_capital)],
+    ) -> Country:
         return Country(capital)
 
     country_1: Country = get_injected_obj(get_country, use_cache=False)
@@ -490,7 +519,9 @@ def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_clean
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -498,7 +529,9 @@ def test_async_generators_with_get_injected_obj_be_correctly_cleaned_up_by_clean
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    def another_get_country(
+        capital: Annotated[Capital, Depends(get_capital)],
+    ) -> Country:
         return Country(capital)
 
     country_1: Country = get_injected_obj(get_country, use_cache=False)
@@ -542,7 +575,9 @@ def test_sync_and_async_generators_with_get_injected_obj_be_correctly_cleaned_up
         yield mayor
         mayor.cleanup()
 
-    async def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> AsyncGenerator[Capital, None]:
+    async def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> AsyncGenerator[Capital, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -550,7 +585,9 @@ def test_sync_and_async_generators_with_get_injected_obj_be_correctly_cleaned_up
     async def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
         return Country(capital)
 
-    def another_get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+    def another_get_country(
+        capital: Annotated[Capital, Depends(get_capital)],
+    ) -> Country:
         return Country(capital)
 
     country_1: Country = get_injected_obj(get_country, use_cache=False)
@@ -592,7 +629,9 @@ def test_function_with_non_dependency_parameters_and_dependencies_be_resolved_co
         yield mayor
         mayor.cleanup()
 
-    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Generator[Capital, None, None]:
+    def get_capital(
+        mayor: Annotated[Mayor, Depends(get_mayor)],
+    ) -> Generator[Capital, None, None]:
         capital = Capital(mayor)
         yield capital
         capital.cleanup()
@@ -615,7 +654,9 @@ def test_function_with_non_dependency_parameters_and_dependencies_be_resolved_co
     assert country is not None
 
 
-def test_get_injected_obj_with_dependency_override_sync(clean_exit_stack_manager: None) -> None:
+def test_get_injected_obj_with_dependency_override_sync(
+    clean_exit_stack_manager: None,
+) -> None:
     """Tests that get_injected_obj respects dependency_overrides for sync dependencies."""
 
     def sync_dependency_override() -> int:
@@ -644,7 +685,9 @@ def test_get_injected_obj_with_dependency_override_sync(clean_exit_stack_manager
     mock_dependency.assert_called_once()
 
 
-async def test_get_injected_obj_with_dependency_override_async(clean_exit_stack_manager: None) -> None:
+async def test_get_injected_obj_with_dependency_override_async(
+    clean_exit_stack_manager: None,
+) -> None:
     """Tests that get_injected_obj respects dependency_overrides for async dependencies."""
 
     async def async_dependency_override() -> int:
@@ -1118,7 +1161,9 @@ async def test_async_get_injected_obj_with_nested_dependencies(
     async def get_config() -> dict[str, str]:
         return {"prefix": "nested"}
 
-    async def get_base_service(config: Annotated[dict[str, str], Depends(get_config)]) -> Service:
+    async def get_base_service(
+        config: Annotated[dict[str, str], Depends(get_config)],
+    ) -> Service:
         return Service(value=config["prefix"])
 
     async def get_dependent_service(
@@ -1179,7 +1224,9 @@ async def test_async_get_injected_obj_without_cache(
     assert call_count == 2
 
 
-def test_get_injected_obj_with_arg_override_sync(clean_exit_stack_manager: None) -> None:
+def test_get_injected_obj_with_arg_override_sync(
+    clean_exit_stack_manager: None,
+) -> None:
     """Verify that kwargs override works for sync functions even with Depends."""
 
     def dep_a() -> int:
@@ -1205,7 +1252,9 @@ def test_get_injected_obj_with_arg_override_sync(clean_exit_stack_manager: None)
     assert get_injected_obj(sync_func, args=[5]) == (5, 2)
 
 
-async def test_get_injected_obj_with_arg_override_async(clean_exit_stack_manager: None) -> None:
+async def test_get_injected_obj_with_arg_override_async(
+    clean_exit_stack_manager: None,
+) -> None:
     """Verify that kwargs override works for async functions even with Depends."""
 
     def dep_a() -> int:
@@ -1252,3 +1301,25 @@ def test_get_injected_obj_with_nested_partial(clean_exit_stack_manager: None) ->
     # Nested partial (curry a, then b)
     p2 = partial(partial(sync_func, a=88), b=99)
     assert get_injected_obj(p2) == (88, 99)
+
+
+def test_async_generators_within_async_dependencies_with_http_connection_import_be_resolved_correctly(
+    clean_exit_stack_manager: None,
+) -> None:
+    """Ref: https://github.com/JasperSui/fastapi-injectable/issues/191"""  # noqa: D415
+    from fastapi.requests import HTTPConnection  # noqa: F401
+
+    @asynccontextmanager
+    async def _get_dep_inner() -> AsyncIterator[str]:
+        yield "hello, world"
+
+    async def get_dep() -> AsyncIterator[str]:
+        async with _get_dep_inner() as dep:
+            yield dep
+
+    @injectable
+    async def func(dep: Annotated[str, Depends(get_dep)]) -> str:
+        return dep
+
+    result = run_coroutine_sync(func())  # type: ignore  # noqa: PGH003
+    assert result == "hello, world"
