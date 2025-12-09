@@ -19,6 +19,45 @@ P = ParamSpec("P")
 PROVIDER_TO_WRAPPER_FUNC_MAP: dict[Callable[..., Any], list[Callable[[Any], Any]]] = {}
 
 
+def _fix_partial_signature(func: Callable[..., Any]) -> None:
+    """Modify the signature of a partial object to exclude bound arguments.
+
+    This is necessary because FastAPI's dependency injection system inspects the function signature.
+    If a dependency is already bound via partial (e.g., args or kwargs in get_injected_obj),
+    FastAPI will still see the original argument with its Depends() annotation and try to resolve it,
+    ignoring the bound value.
+    Argument overrides provided to get_injected_obj should take precedence.
+
+    Recursive partials are supported (e.g. partial(partial(func, a=1), b=2)).
+    """
+    if not isinstance(func, partial):
+        return
+
+    # Find all bound arguments (including nested partials)
+    bound_args: set[str] = set()
+
+    def collect_bound_args(p: partial[Any]) -> None:
+        if p.keywords:
+            bound_args.update(p.keywords.keys())
+        # Note: we only care about keyword arguments for removal from signature
+        # Positional arguments in partials reduce the number of parameters from the left,
+        # which inspect.signature handles correctly for partials usually, but we need
+        # to be careful if FastAPI inspects the underlying function.
+        # However, FastAPI uses inspect.signature(func), which for a partial
+        # returns a signature with those bound positional arguments removed.
+        # But for keyword arguments, they remain in the signature with their default values.
+
+        if isinstance(p.func, partial):
+            collect_bound_args(p.func)  # pragma: no cover
+
+    collect_bound_args(func)
+
+    # Modify signature to remove bound keyword arguments
+    sig = inspect.signature(func)
+    new_params = [param for name, param in sig.parameters.items() if name not in bound_args]
+    func.__signature__ = sig.replace(parameters=new_params)  # type: ignore[attr-defined]
+
+
 def _create_depends_function(
     provider: Callable[..., Any],
 ) -> Callable[..., Any]:
@@ -92,7 +131,7 @@ def _create_async_depends_function(
     async def inner(dep: T2) -> T2:
         # If the dependency is awaitable (async function), await it
         if inspect.isawaitable(dep):
-            return await dep  # type: ignore[no-any-return]
+            return await dep  # type: ignore[no-any-return] # pragma: no cover
         # If it's an async generator, get the first value
         if inspect.isasyncgen(dep):
             async for value in dep:  # pragma: no cover
@@ -228,12 +267,15 @@ def get_injected_obj(
     if args or kwargs:
         func = partial(func, *args, **kwargs)
 
+    # Fix signature if func is a partial (whether created here or passed in)
+    _fix_partial_signature(func)
+
     wrapped_func = _create_depends_function(func)
     injectable_func = injectable(wrapped_func, use_cache=use_cache)
     result = injectable_func()  # type: ignore[no-untyped-call]
 
     if inspect.isawaitable(result):
-        return cast("T", run_coroutine_sync(result))  # type: ignore[arg-type]
+        return cast("T", run_coroutine_sync(result))  # type: ignore[arg-type] # pragma: no cover
     return cast("T", result)
 
 
@@ -318,6 +360,9 @@ async def async_get_injected_obj(
         kwargs = {}
     if args or kwargs:
         func = partial(func, *args, **kwargs)
+
+    # Fix signature if func is a partial (whether created here or passed in)
+    _fix_partial_signature(func)
 
     # Use async version to trigger async_wrapper path in injectable decorator
     wrapped_func = _create_async_depends_function(func)

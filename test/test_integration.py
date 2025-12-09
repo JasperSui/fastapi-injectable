@@ -1177,3 +1177,78 @@ async def test_async_get_injected_obj_without_cache(
     service2 = await async_get_injected_obj(get_service, use_cache=False)
     assert service2.value == "uncached_2"
     assert call_count == 2
+
+
+def test_get_injected_obj_with_arg_override_sync(clean_exit_stack_manager: None) -> None:
+    """Verify that kwargs override works for sync functions even with Depends."""
+
+    def dep_a() -> int:
+        return 1
+
+    def dep_b() -> int:
+        return 2
+
+    def sync_func(a: Annotated[int, Depends(dep_a)], b: Annotated[int, Depends(dep_b)]) -> tuple[int, int]:
+        return a, b
+
+    # Default behavior
+    assert get_injected_obj(sync_func) == (1, 2)
+
+    # Override 'b'
+    assert get_injected_obj(sync_func, kwargs={"b": 6}) == (1, 6)
+
+    # Override 'a' and 'b'
+    assert get_injected_obj(sync_func, kwargs={"a": 5, "b": 6}) == (5, 6)
+
+    # Positional args (if supported by get_injected_obj which uses partial)
+    # partial(sync_func, 5) -> a=5
+    assert get_injected_obj(sync_func, args=[5]) == (5, 2)
+
+
+async def test_get_injected_obj_with_arg_override_async(clean_exit_stack_manager: None) -> None:
+    """Verify that kwargs override works for async functions even with Depends."""
+
+    def dep_a() -> int:
+        return 1
+
+    def dep_b() -> int:
+        return 2
+
+    async def async_func(a: Annotated[int, Depends(dep_a)], b: Annotated[int, Depends(dep_b)]) -> tuple[int, int]:
+        return a, b
+
+    # Default behavior
+    assert await async_get_injected_obj(async_func) == (1, 2)
+
+    # Override 'b'
+    assert await async_get_injected_obj(async_func, kwargs={"b": 6}) == (1, 6)
+
+    # Override 'a' and 'b'
+    assert await async_get_injected_obj(async_func, kwargs={"a": 5, "b": 6}) == (5, 6)
+
+    # Positional args
+    assert await async_get_injected_obj(async_func, args=[5]) == (5, 2)
+
+
+def test_get_injected_obj_with_nested_partial(clean_exit_stack_manager: None) -> None:
+    """Verify that it works even if the user passes a pre-curried partial."""
+
+    def dep_a() -> int:
+        return 1
+
+    def dep_b() -> int:
+        return 2
+
+    def sync_func(a: Annotated[int, Depends(dep_a)], b: Annotated[int, Depends(dep_b)]) -> tuple[int, int]:
+        return a, b
+
+    # User creates a partial
+    p = partial(sync_func, b=99)
+    # And tries to inject it.
+    # Note: get_injected_obj doesn't take 'args'/'kwargs' here, just the func.
+    # The fix should detect it's a partial and fix signature.
+    assert get_injected_obj(p) == (1, 99)
+
+    # Nested partial (curry a, then b)
+    p2 = partial(partial(sync_func, a=88), b=99)
+    assert get_injected_obj(p2) == (88, 99)
