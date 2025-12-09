@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from typing import Any, ParamSpec, TypeVar, cast
 
 from fastapi import FastAPI, Request
@@ -69,7 +70,7 @@ async def resolve_dependencies(
         # These two inner stacks are used to workaround the assertion in fastapi==0.121.0
         # Ref: https://github.com/fastapi/fastapi/commit/ac438b99342c859ae0e10f7064021125bd247bf5#diff-aef3dac481b68359f4edd6974fa3a047cfde595254a4567a560cebc9ccb0673fR575-R582 # noqa: E501
         "fastapi_inner_astack": async_exit_stack,
-        "fastapi_function_astack": async_exit_stack,
+        "fastapi_function_astack": AsyncExitStack(),
     }
     app = _get_app()
     if app is not None:
