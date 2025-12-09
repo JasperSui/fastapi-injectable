@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-injectable"
-version = "1.4.4"
+version = "1.4.5"
 description = "Allow you to painlessly use dependency injection mechanism (`Depends`) of FastAPI outside the FastAPI routes"
 authors = [{ name = "Jasper Sui", email = "suiyang03@gmail.com" }]
 requires-python = ">=3.10"
