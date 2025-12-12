@@ -1323,3 +1323,33 @@ def test_async_generators_within_async_dependencies_with_http_connection_import_
 
     result = run_coroutine_sync(func())  # type: ignore  # noqa: PGH003
     assert result == "hello, world"
+
+
+def test_imbricated_async_generators_within_async_dependencies_with_http_connection_import_be_resolved_correctly(
+    clean_exit_stack_manager: None,
+) -> None:
+    """Ref: https://github.com/JasperSui/fastapi-injectable/issues/199"""  # noqa: D415
+    from fastapi.requests import HTTPConnection  # noqa: F401
+
+    @asynccontextmanager
+    async def _get_dep1_inner() -> AsyncIterator[str]:
+        yield "hello, world"
+
+    async def get_dep1() -> AsyncIterator[str]:
+        async with _get_dep1_inner() as dep1:
+            yield dep1
+
+    @asynccontextmanager
+    async def _get_dep2_inner(dep1: str) -> AsyncIterator[str]:
+        yield f"{dep1}, lol"
+
+    async def get_dep2(dep1: Annotated[str, Depends(get_dep1)]) -> AsyncIterator[str]:
+        async with _get_dep2_inner(dep1) as dep2:
+            yield dep2
+
+    @injectable
+    async def func(dep2: Annotated[str, Depends(get_dep2)]) -> str:
+        return dep2
+
+    result = run_coroutine_sync(func())  # type: ignore  # noqa: PGH003
+    assert result == "hello, world, lol"
