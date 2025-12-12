@@ -63,14 +63,22 @@ async def resolve_dependencies(
     root_dep.call = cast("Callable[..., Any]", root_dep.call)
     async_exit_stack = await async_exit_stack_manager.get_stack(root_dep.call)
 
+    # Use isolated stacks for FastAPI's internal logic to prevent conflicts.
+    # We must ensure they are closed when our main stack is closed.
+    fastapi_inner_astack = AsyncExitStack()
+    fastapi_function_astack = AsyncExitStack()
+
+    async_exit_stack.push_async_callback(fastapi_inner_astack.aclose)
+    async_exit_stack.push_async_callback(fastapi_function_astack.aclose)
+
     fake_request_scope: dict[str, Any] = {
         "type": "http",
         "headers": [],
         "query_string": "",
         # These two inner stacks are used to workaround the assertion in fastapi==0.121.0
         # Ref: https://github.com/fastapi/fastapi/commit/ac438b99342c859ae0e10f7064021125bd247bf5#diff-aef3dac481b68359f4edd6974fa3a047cfde595254a4567a560cebc9ccb0673fR575-R582 # noqa: E501
-        "fastapi_inner_astack": async_exit_stack,
-        "fastapi_function_astack": AsyncExitStack(),
+        "fastapi_inner_astack": fastapi_inner_astack,
+        "fastapi_function_astack": fastapi_function_astack,
     }
     app = _get_app()
     if app is not None:
