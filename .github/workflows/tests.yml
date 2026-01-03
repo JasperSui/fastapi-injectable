@@ -107,7 +107,7 @@ jobs:
         run: pipx install 'nox>=2025.05.01'
 
       - name: Download coverage data
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: coverage-data
 
