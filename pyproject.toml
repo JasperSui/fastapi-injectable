@@ -1,11 +1,26 @@
 [project]
 name = "fastapi-injectable"
 version = "1.4.6"
-description = "Allow you to painlessly use dependency injection mechanism (`Depends`) of FastAPI outside the FastAPI routes"
+description = "Use FastAPI's Depends() anywhere — in CLI tools, Celery tasks, background workers, and more. No refactoring needed."
 authors = [{ name = "Jasper Sui", email = "suiyang03@gmail.com" }]
 requires-python = ">=3.10"
 readme = "README.md"
 license = "MIT"
+keywords = [
+    "fastapi",
+    "dependency-injection",
+    "depends",
+    "di",
+    "inversion-of-control",
+    "ioc",
+    "background-tasks",
+    "celery",
+    "cli",
+    "service-layer",
+    "clean-architecture",
+    "testing",
+    "async",
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python :: 3.10",
@@ -16,6 +31,10 @@ classifiers = [
     "Programming Language :: Python :: Free Threading :: 3 - Stable",
     "Framework :: FastAPI",
     "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
 ]
 dependencies = ["fastapi>=0.112.4,<1.0.0"]
 

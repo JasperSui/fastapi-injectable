@@ -3,11 +3,17 @@
   <img src="https://raw.githubusercontent.com/JasperSui/fastapi-injectable/main/static/image/logo.png" alt="FastAPI Injectable" height="200">
 </p>
 <p align="center">
-    <em>Use FastAPI's Depends() anywhere - even outside FastAPI routes</em>
+    <em>Use FastAPI's <code>Depends()</code> anywhere — in CLI tools, background workers, scheduled jobs, and more.</em>
+</p>
+<p align="center">
+    <strong>Stop rewriting your dependency logic. Start reusing it.</strong>
 </p>
 <p align="center">
 <a href="https://pypi.org/project/fastapi-injectable/" target="_blank">
     <img src="https://img.shields.io/pypi/v/fastapi-injectable.svg?color=009688&label=PyPI" alt="PyPI">
+</a>
+<a href="https://pypi.org/project/fastapi-injectable/" target="_blank">
+    <img src="https://img.shields.io/pypi/dm/fastapi-injectable?color=009688&label=Downloads" alt="PyPI Downloads">
 </a>
 <a href="https://pypi.org/project/fastapi-injectable" target="_blank">
     <img src="https://img.shields.io/pypi/pyversions/fastapi-injectable?color=009688&label=Python" alt="Python Version">
@@ -15,8 +21,8 @@
 <a href="https://github.com/JasperSui/fastapi-injectable/blob/main/LICENSE" target="_blank">
     <img src="https://img.shields.io/pypi/l/fastapi-injectable?color=009688&label=License" alt="License">
 </a>
-<a href="https://fastapi-injectable.readthedocs.io/" target="_blank">
-    <img src="https://img.shields.io/readthedocs/fastapi-injectable/latest.svg?label=Read%20the%20Docs&color=009688" alt="Read the documentation">
+<a href="https://github.com/JasperSui/fastapi-injectable/stargazers" target="_blank">
+    <img src="https://img.shields.io/github/stars/JasperSui/fastapi-injectable?style=social" alt="GitHub Stars">
 </a>
 </p>
 <p align="center">
@@ -26,12 +32,8 @@
 <a href="https://app.codecov.io/gh/JasperSui/fastapi-injectable" target="_blank">
     <img src="https://img.shields.io/codecov/c/github/JasperSui/fastapi-injectable?color=009688&label=Test%20Coverage" alt="Codecov">
 </a>
-<a href="https://github.com/astral-sh/ruff" target="_blank">
-    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff">
-</a>
-<img src="https://img.shields.io/badge/type--checked-mypy-blue?style=flat-square&logo=python&label=type-checked&color=009688" alt="Mypy">
-<a href="https://github.com/pre-commit/pre-commit" target="_blank">
-    <img src="https://img.shields.io/badge/pre--commit-blue?logo=pre-commit&logoColor=FAB040&color=009688" alt="pre-commit">
+<a href="https://fastapi-injectable.readthedocs.io/" target="_blank">
+    <img src="https://img.shields.io/readthedocs/fastapi-injectable/latest.svg?label=Docs&color=009688" alt="Read the Docs">
 </a>
 </p>
 
@@ -43,7 +45,19 @@
 
 ---
 
-## Basic Example
+## Why fastapi-injectable?
+
+If you use FastAPI, you've built your app around `Depends()`. But the moment you need those same dependencies in a **CLI command**, **background worker**, **Celery task**, or **scheduled job** — you're stuck. You end up:
+
+- **Duplicating** dependency logic outside of routes
+- **Introducing** a second DI framework alongside FastAPI's
+- **Refactoring** hundreds of existing dependency functions
+
+**fastapi-injectable** fixes this with a single decorator. Your existing `Depends()` functions just work — everywhere.
+
+> Born from a real need: This project solves [FastAPI#1105](https://github.com/fastapi/fastapi/issues/1105) — a 4+ year old issue requesting `Depends()` outside routes.
+
+## Quick Start
 
 ```python
 from typing import Annotated
@@ -69,13 +83,16 @@ print(result) # Output: 'data'
 
 ## Key Features
 
-1. **Basic Injection**: Use decorators, function wrappers, or utility functions.
-2. **Manual Overrides**: Explicit arguments you pass always take priority over injected dependencies (great for tests and mocks).
-3. **Full Async Support**: Works with both sync and async code.
-4. **Resource Management**: Built-in cleanup for dependencies.
-5. **Dependency Caching**: Optional caching for better performance.
-6. **Graceful Shutdown**: Automatic cleanup on program exit.
-7. **Event Loop Management**: Control the event loop to ensure the objects created by `fastapi-injectable` are executed in the right loop.
+| Feature | Description |
+|---------|-------------|
+| **Drop-in decorator** | Add `@injectable` to any function using `Depends()` |
+| **Full async support** | Works with sync, async, and mixed dependency chains |
+| **Test-friendly** | Manual overrides let you swap in mocks instantly |
+| **Resource cleanup** | Built-in lifecycle management for generator deps |
+| **Dependency caching** | Optional caching for better performance |
+| **App state access** | Register your FastAPI app to access `app.state` in deps |
+| **Mypy plugin** | Full type-checking support out of the box |
+| **Graceful shutdown** | Automatic cleanup on program exit via signal handling |
 
 ## Overview
 
@@ -671,6 +688,9 @@ Please refer to the [Real-world Examples](https://fastapi-injectable.readthedocs
 
 <!-- faq-begin -->
 
+<details>
+<summary><strong>Click to expand FAQ</strong></summary>
+
 - [Why would I need this package?](#why-would-i-need-this-package)
 - [Why not directly use other DI packages like Dependency Injector or FastDepends?](#why-not-directly-use-other-di-packages-like-dependency-injector-or-fastdepends)
 - [Can I use it with existing FastAPI dependencies?](#can-i-use-it-with-existing-fastapi-dependencies)
@@ -777,7 +797,19 @@ A: Yes! The package has:
 
 <hr>
 
+</details>
+
 <!-- faq-end -->
+
+## Star History
+
+<a href="https://star-history.com/#JasperSui/fastapi-injectable&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=JasperSui/fastapi-injectable&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=JasperSui/fastapi-injectable&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=JasperSui/fastapi-injectable&type=Date" />
+ </picture>
+</a>
 
 ## Contributing
 
