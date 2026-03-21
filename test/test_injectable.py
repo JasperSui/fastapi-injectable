@@ -5,6 +5,7 @@ from typing import Annotated, Generic, TypeVar
 from fastapi import Depends
 
 from src.fastapi_injectable.decorator import injectable
+from src.fastapi_injectable.main import _build_dependency_only_callable, _has_depends
 
 
 class Mayor:
@@ -483,3 +484,125 @@ async def test_injectable_async_gen_override_country() -> None:
         break
     assert country_manual.capital is capital
     assert country_manual.capital.mayor is capital.mayor
+
+
+class NonPydanticType:
+    """A class that is NOT a valid Pydantic field type, simulating Celery's Task class."""
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+
+def test_injectable_with_non_pydantic_positional_param() -> None:
+    """Regression test for #214: non-Pydantic params (e.g. Celery bound task) should not break injection."""
+
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def get_capital(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Capital:
+        return Capital(mayor)
+
+    @injectable
+    def my_task(self: NonPydanticType, capital: Annotated[Capital, Depends(get_capital)]) -> Country:
+        return Country(capital)
+
+    task_instance = NonPydanticType()
+    country = my_task(task_instance)
+    assert isinstance(country, Country)
+    assert isinstance(country.capital, Capital)
+    assert isinstance(country.capital.mayor, Mayor)
+
+
+def test_injectable_with_non_pydantic_positional_param_and_regular_args() -> None:
+    """Ensure non-dependency params of mixed types work alongside Depends()."""
+
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    @injectable
+    def my_task(self: NonPydanticType, arg: int, mayor: Annotated[Mayor, Depends(get_mayor)]) -> Mayor:
+        assert isinstance(arg, int)
+        return mayor
+
+    task_instance = NonPydanticType()
+    mayor = my_task(task_instance, 42)
+    assert isinstance(mayor, Mayor)
+
+
+def test_build_dependency_only_callable_filters_non_depends_params() -> None:
+    """_build_dependency_only_callable should strip non-Depends parameters."""
+    import inspect
+
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def func(self: NonPydanticType, arg: int, dep: Annotated[Mayor, Depends(get_mayor)]) -> None:
+        pass
+
+    stub = _build_dependency_only_callable(func)
+    assert stub is not func
+    sig = inspect.signature(stub)
+    assert list(sig.parameters.keys()) == ["dep"]
+
+
+def test_build_dependency_only_callable_returns_func_when_all_are_depends() -> None:
+    """When all params are Depends, the original function is returned as-is."""
+
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def func(dep: Annotated[Mayor, Depends(get_mayor)]) -> None:
+        pass
+
+    result = _build_dependency_only_callable(func)
+    assert result is func
+
+
+def test_has_depends_with_annotated_depends() -> None:
+    import inspect
+
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def func(dep: Annotated[Mayor, Depends(get_mayor)]) -> None:
+        pass
+
+    sig = inspect.signature(func)
+    param = next(iter(sig.parameters.values()))
+    assert _has_depends(param) is True
+
+
+def test_has_depends_with_plain_param() -> None:
+    import inspect
+
+    def func(x: int) -> None:
+        pass
+
+    sig = inspect.signature(func)
+    param = next(iter(sig.parameters.values()))
+    assert _has_depends(param) is False
+
+
+def test_has_depends_with_annotated_non_depends_metadata() -> None:
+    import inspect
+
+    def func(x: Annotated[int, "some_metadata"]) -> None:
+        pass
+
+    sig = inspect.signature(func)
+    param = next(iter(sig.parameters.values()))
+    assert _has_depends(param) is False
+
+
+def test_has_depends_with_default_depends() -> None:
+    import inspect
+
+    def get_mayor() -> Mayor:
+        return Mayor()
+
+    def func(dep: Mayor = Depends(get_mayor)) -> None:
+        pass
+
+    sig = inspect.signature(func)
+    param = next(iter(sig.parameters.values()))
+    assert _has_depends(param) is True
