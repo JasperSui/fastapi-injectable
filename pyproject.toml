@@ -62,6 +62,9 @@ dev = [
     "httpx>=0.28.1,<0.29",
     "pre-commit>=4.0.0,<5",
     "pre-commit-hooks>=5.0.0,<6",
+    "celery>=5.3,<6",
+    "dramatiq>=1.17,<2",
+    "temporalio>=1.9,<2",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -145,6 +148,7 @@ plugins = ["fastapi_injectable.mypy"]
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "session"
 asyncio_mode = "auto"
+testpaths = ["test"]
 
 [tool.coverage.paths]
 source = ["src", "*/site-packages"]

@@ -124,7 +124,7 @@ def mypy(session: nox.Session) -> None:
 def tests(session: nox.Session) -> None:
     """Run the test suite."""
     session.install(".")
-    session.install("coverage[toml]", "pytest", "pytest-asyncio", "httpx")
+    session.install("coverage[toml]", "pytest", "pytest-asyncio", "httpx", "celery", "dramatiq", "temporalio")
     try:
         session.run("coverage", "run", "--parallel-mode", "-m", "pytest", *session.posargs)
     finally:
