@@ -1,8 +1,10 @@
 import asyncio
+import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Annotated, Any, ParamSpec, TypeVar, cast, get_args, get_origin
 
+import fastapi.params
 from fastapi import FastAPI, Request
 from fastapi.dependencies.utils import get_dependant, solve_dependencies
 
@@ -25,6 +27,44 @@ async def register_app(app: FastAPI) -> None:
 def _get_app() -> FastAPI | None:
     """Get the registered FastAPI app."""
     return _app
+
+
+def _has_depends(param: inspect.Parameter) -> bool:
+    """Check if a parameter has a Depends() annotation (either via Annotated metadata or as default)."""
+    # Check Annotated[Type, Depends(...)] style
+    if get_origin(param.annotation) is Annotated:
+        for metadata in get_args(param.annotation)[1:]:
+            if isinstance(metadata, fastapi.params.Depends):
+                return True
+    # Check default=Depends(...) style
+    return isinstance(param.default, fastapi.params.Depends)
+
+
+def _build_dependency_only_callable(
+    func: Callable[..., Any],
+) -> Callable[..., Any]:
+    """Create a callable with only Depends() parameters in its signature.
+
+    This prevents FastAPI's get_dependant from trying to parse non-dependency
+    parameters (e.g. ``self``, Celery's bound ``task``) as query/body params,
+    which would fail for types that are not valid Pydantic fields.
+    """
+    sig = inspect.signature(func)
+    dep_params = [p for p in sig.parameters.values() if _has_depends(p)]
+
+    # If all parameters are dependencies, no filtering needed
+    if len(dep_params) == len(sig.parameters):
+        return func
+
+    def stub() -> None: ...  # pragma: no cover
+
+    stub.__signature__ = sig.replace(parameters=dep_params)  # type: ignore[attr-defined]
+    # get_dependant inspects annotations from __annotations__ as well in some FastAPI versions
+    stub.__annotations__ = {p.name: p.annotation for p in dep_params}
+    # Preserve identity for error messages and diagnostics
+    stub.__name__ = getattr(func, "__name__", "stub")
+    stub.__qualname__ = getattr(func, "__qualname__", "stub")
+    return stub
 
 
 async def resolve_dependencies(
@@ -51,7 +91,8 @@ async def resolve_dependencies(
         - A fake HTTP request is created to mimic FastAPI's request-based dependency resolution.
     """
     provided_kwargs = provided_kwargs or {}
-    root_dep = get_dependant(path="command", call=func)
+    dep_only_func = _build_dependency_only_callable(func)
+    root_dep = get_dependant(path="command", call=dep_only_func)
 
     # Get names of actual dependency (Depends()) parameters
     dependency_names = {param.name for param in root_dep.dependencies if param.name}
@@ -60,7 +101,7 @@ async def resolve_dependencies(
     effective_dependencies = [dep for dep in root_dep.dependencies if dep.name not in provided_kwargs]
     root_dep.dependencies = effective_dependencies
 
-    root_dep.call = cast("Callable[..., Any]", root_dep.call)
+    root_dep.call = cast("Callable[..., Any]", func)
     async_exit_stack = await async_exit_stack_manager.get_stack(root_dep.call)
 
     # Use isolated stacks for FastAPI's internal logic to prevent conflicts.
