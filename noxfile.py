@@ -124,7 +124,12 @@ def mypy(session: nox.Session) -> None:
 def tests(session: nox.Session) -> None:
     """Run the test suite."""
     session.install(".")
-    session.install("coverage[toml]", "pytest", "pytest-asyncio", "httpx", "celery", "dramatiq", "temporalio")
+    session.install("coverage[toml]", "pytest", "pytest-asyncio", "httpx", "celery", "dramatiq")
+    # temporalio contains a native Rust extension and has no wheels for free-threaded Python.
+    # Skip it on those interpreters so pytest.importorskip() can gracefully skip temporal tests.
+    is_free_threaded = isinstance(session.python, str) and session.python.endswith("t")
+    if not is_free_threaded:
+        session.install("temporalio")
     try:
         session.run("coverage", "run", "--parallel-mode", "-m", "pytest", *session.posargs)
     finally:

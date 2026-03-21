@@ -1,14 +1,18 @@
 # type: ignore  # noqa: PGH003
 """Integration tests for Celery task + @injectable interop."""
 
-from typing import Annotated, Any
+import pytest
 
-from celery import Celery, Task
-from fastapi import Depends
+pytest.importorskip("celery", reason="celery not installable on this Python")
 
-from src.fastapi_injectable.decorator import injectable
+from typing import Annotated, Any  # noqa: E402
 
-from .conftest import DbSession, EmailService, get_db, get_email_service
+from celery import Celery, Task  # noqa: E402
+from fastapi import Depends  # noqa: E402
+
+from src.fastapi_injectable.decorator import injectable  # noqa: E402
+
+from .conftest import DbSession, EmailService, get_db, get_email_service  # noqa: E402
 
 app = Celery("test")
 app.conf.task_always_eager = True

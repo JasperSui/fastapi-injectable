@@ -1,17 +1,20 @@
 # type: ignore  # noqa: PGH003
 """Integration tests for Dramatiq actor + @injectable interop."""
 
-from collections.abc import Generator
-from typing import Annotated, Any
-
-import dramatiq
 import pytest
-from dramatiq.brokers.stub import StubBroker
-from fastapi import Depends
 
-from src.fastapi_injectable.decorator import injectable
+pytest.importorskip("dramatiq", reason="dramatiq not installable on this Python")
 
-from .conftest import DbSession, get_db
+from collections.abc import Generator  # noqa: E402
+from typing import Annotated, Any  # noqa: E402
+
+import dramatiq  # noqa: E402
+from dramatiq.brokers.stub import StubBroker  # noqa: E402
+from fastapi import Depends  # noqa: E402
+
+from src.fastapi_injectable.decorator import injectable  # noqa: E402
+
+from .conftest import DbSession, get_db  # noqa: E402
 
 
 @pytest.fixture

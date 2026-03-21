@@ -1,16 +1,19 @@
 # type: ignore  # noqa: PGH003
 """Integration tests for Temporal activity + @injectable interop."""
 
-from typing import Annotated, Any
-
 import pytest
-from fastapi import Depends
-from temporalio import activity
-from temporalio.testing import ActivityEnvironment
 
-from src.fastapi_injectable.decorator import injectable
+pytest.importorskip("temporalio", reason="temporalio not installable on this Python")
 
-from .conftest import DbSession, get_db
+from typing import Annotated, Any  # noqa: E402
+
+from fastapi import Depends  # noqa: E402
+from temporalio import activity  # noqa: E402
+from temporalio.testing import ActivityEnvironment  # noqa: E402
+
+from src.fastapi_injectable.decorator import injectable  # noqa: E402
+
+from .conftest import DbSession, get_db  # noqa: E402
 
 
 @pytest.fixture
