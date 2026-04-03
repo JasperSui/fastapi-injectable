@@ -79,8 +79,7 @@ async def test_cleanup_stack_with_empty_stacks(
     mock_loop_manager: Mock, manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
 ) -> None:
     await manager.cleanup_stack(mock_func)
-    assert manager._stacks == {}
-
+    assert len(manager._stacks) == 0
     mock_loop_manager.in_loop.assert_not_called()
 
 
