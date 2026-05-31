@@ -157,9 +157,15 @@ tests = ["test", "*/test"]
 [tool.coverage.run]
 parallel = true
 branch = true
+# Most tests import the package via the ``src.fastapi_injectable`` path, but a
+# few (e.g. test_scope) import it as the installed ``fastapi_injectable``
+# package. Measure both so coverage is captured regardless of import style;
+# [tool.coverage.paths] then folds the two into a single source tree.
 source = ["src"]
+source_pkgs = ["fastapi_injectable"]
 omit = [
     "src/fastapi_injectable/mypy.py", # The mypy plugin is fragile
+    "*/fastapi_injectable/mypy.py", # ...also when measured via the installed package path
 ]
 
 [tool.coverage.report]
