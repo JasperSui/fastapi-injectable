@@ -1,10 +1,16 @@
-from collections.abc import AsyncGenerator
+import asyncio
+from collections.abc import AsyncGenerator, Generator
 from contextlib import AsyncExitStack
+from typing import Annotated
 
 import pytest
+from fastapi import Depends
 
+from fastapi_injectable.async_exit_stack import async_exit_stack_manager
+from fastapi_injectable.concurrency import run_coroutine_sync
+from fastapi_injectable.decorator import injectable
 from fastapi_injectable.scope import InjectableScope, _current_scope, injectable_scope
-from fastapi_injectable.util import cleanup_all_exit_stacks
+from fastapi_injectable.util import async_get_injected_obj, cleanup_all_exit_stacks, get_injected_obj
 
 
 @pytest.fixture(autouse=True)
@@ -52,15 +58,6 @@ async def test_injectable_scope_resets_contextvar_on_exception() -> None:
     assert _current_scope.get() is None
 
 
-from typing import Annotated  # noqa: E402
-
-from fastapi import Depends  # noqa: E402
-
-from fastapi_injectable.async_exit_stack import async_exit_stack_manager  # noqa: E402
-from fastapi_injectable.decorator import injectable  # noqa: E402
-from fastapi_injectable.util import async_get_injected_obj  # noqa: E402
-
-
 class Mayor:
     def __init__(self) -> None:
         self._is_cleaned_up = False
@@ -82,9 +79,6 @@ async def test_resolution_inside_scope_cleans_up_on_exit_and_skips_global_manage
         assert len(async_exit_stack_manager._stacks) == 0
 
     assert mayor._is_cleaned_up is True
-
-
-import asyncio  # noqa: E402
 
 
 async def test_parallel_scopes_clean_up_independently() -> None:
@@ -294,3 +288,28 @@ async def test_no_scope_falls_back_to_global_manager() -> None:
 
     await cleanup_exit_stack_of_func(get_mayor)
     assert mayor._is_cleaned_up is True
+
+
+def test_get_injected_obj_explicit_scope_sync() -> None:
+    class Thing:
+        def __init__(self) -> None:
+            self.cleaned = False
+
+    def get_thing() -> Generator[Thing, None, None]:
+        thing = Thing()
+        yield thing
+        thing.cleaned = True
+
+    scope = InjectableScope()
+    thing = get_injected_obj(get_thing, scope=scope)  # routes cleanup onto scope's exit_stack
+    assert thing.cleaned is False
+    run_coroutine_sync(scope.exit_stack.aclose())  # caller closes the scope's stack
+    assert thing.cleaned is True
+
+
+async def test_injectable_scope_aexit_with_no_prior_aenter() -> None:
+    # Cover the defensive branch: __aexit__ when _token is None (never __aenter__'d).
+    scope = InjectableScope()
+    assert scope._token is None  # never entered
+    # Should not raise and should close the exit stack cleanly.
+    await scope.__aexit__(None, None, None)
