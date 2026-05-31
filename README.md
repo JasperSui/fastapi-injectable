@@ -659,6 +659,60 @@ These test cases mirror common development patterns you'll encounter. They show 
 
 The test files are written to be self-documenting, so browsing through them will give you practical examples for most scenarios you'll face in your codebase.
 
+### 3. Isolated dependency scopes for parallel work
+
+By default, the exit stack that holds a dependency's cleanup is keyed by the **function**, so every concurrent call of the same injectable shares one stack. When you process events in parallel (for example, an async consumer fanning work out through `asyncio.TaskGroup`), that shared stack makes per-event cleanup unsafe — cleaning up one event can tear down another's in-flight resources.
+
+`injectable_scope()` gives each unit of work its **own** exit stack *and* cache — the same request-scoped model FastAPI uses internally. Enter the scope inside each task; `contextvars` keeps the tasks isolated:
+
+```python
+import asyncio
+from collections.abc import AsyncGenerator
+
+from fastapi_injectable import async_get_injected_obj, injectable_scope
+
+
+async def get_connection() -> AsyncGenerator[Connection, None]:
+    conn = await open_connection()
+    try:
+        yield conn
+    finally:
+        await conn.close()
+
+
+async def process_event(event) -> None:
+    async with injectable_scope():
+        conn = await async_get_injected_obj(get_connection)
+        await handle(event, conn)
+    # only this event's connection is closed here — siblings are untouched
+
+
+async def consume(events) -> None:
+    async with asyncio.TaskGroup() as tg:  # Python 3.11+; use asyncio.gather() on 3.10
+        for event in events:
+            tg.create_task(process_event(event))
+```
+
+#### Sharing one scope explicitly
+
+`InjectableScope` is also usable directly when you want to manage a scope's lifecycle yourself and inject into it from several places. Pass it with `scope=`; this routes resolution into that scope without taking ownership of it (you close it):
+
+```python
+from fastapi_injectable import InjectableScope, async_get_injected_obj
+
+scope = InjectableScope()
+async with scope:
+    a = await async_get_injected_obj(get_a, scope=scope)
+    scope.exit_stack.push_async_callback(my_cleanup)  # rides the same lifecycle
+# a and my_cleanup are torn down together when the block exits
+```
+
+#### Notes & limitations
+
+- Inside a scope, `cleanup_exit_stack_of_func()` / `cleanup_all_exit_stacks()` are no-ops for the scope's resources — the `async with` owns cleanup.
+- With no active scope, behavior is unchanged (the global, function-keyed manager and the `cleanup_*` helpers work exactly as before).
+- `injectable_scope` is **async-first**. Under the `background_thread` loop strategy, `contextvars` are not propagated across threads, so a scope is not visible inside the background loop. Use the async API for scoped resolution.
+
 <!-- advanced-scenarios-end -->
 
 ## Real-world Examples
@@ -675,7 +729,7 @@ This example demonstrates several key patterns for using dependency injection in
 
 2. **Proper Resource Management**:
    - Dependencies with cleanup needs (like database connections) are properly handled
-   - Cleanup code in generators runs when `cleanup_exit_stack_of_func()` is called
+   - Cleanup code in generators runs when `cleanup_exit_stack_of_func()` is called, or automatically at the end of an `injectable_scope()` block
    - Cache is cleared between messages to prevent memory leaks
 
 3. **Graceful Shutdown**:

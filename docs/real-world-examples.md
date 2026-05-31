@@ -12,7 +12,7 @@ This example demonstrates several key patterns for using dependency injection in
 
 2. **Proper Resource Management**:
    - Dependencies with cleanup needs (like database connections) are properly handled
-   - Cleanup code in generators runs when `cleanup_exit_stack_of_func()` is called
+   - Cleanup code in generators runs when `cleanup_exit_stack_of_func()` is called, or automatically at the end of an `injectable_scope()` block
    - Cache is cleared between messages to prevent memory leaks
 
 3. **Graceful Shutdown**:
