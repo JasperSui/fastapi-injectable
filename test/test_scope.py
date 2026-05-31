@@ -113,7 +113,7 @@ async def test_parallel_scopes_clean_up_independently() -> None:
         proceed["a"].set()
         await done["a"].wait()
         assert opened["a"]._is_cleaned_up is True
-        assert opened["b"]._is_cleaned_up is False  # <- isolation proven
+        assert opened["b"]._is_cleaned_up is False  # type: ignore[unreachable]  # isolation proven
 
         proceed["b"].set()
         await asyncio.gather(task_a, task_b)
@@ -122,7 +122,7 @@ async def test_parallel_scopes_clean_up_independently() -> None:
             if not task.done():
                 task.cancel()
 
-    assert opened["a"]._is_cleaned_up is True
+    assert opened["a"]._is_cleaned_up is True  # type: ignore[unreachable]
     assert opened["b"]._is_cleaned_up is True
 
 
@@ -146,8 +146,8 @@ async def test_nested_scopes_clean_up_in_lifo_order() -> None:
             assert outer_mayor._is_cleaned_up is False
         # inner scope closed
         assert inner_mayor._is_cleaned_up is True
-        assert outer_mayor._is_cleaned_up is False
-    assert outer_mayor._is_cleaned_up is True
+        assert outer_mayor._is_cleaned_up is False  # type: ignore[unreachable]
+    assert outer_mayor._is_cleaned_up is True  # type: ignore[unreachable]
 
 
 async def test_in_scope_cache_dedups_shared_subdependency() -> None:
@@ -267,7 +267,7 @@ async def test_injectable_decorated_function_uses_active_scope() -> None:
         return mayor
 
     async with injectable_scope():
-        captured["m"] = await handler()
+        captured["m"] = await handler()  # type: ignore[call-arg]
         assert captured["m"]._is_cleaned_up is False
         assert len(async_exit_stack_manager._stacks) == 0  # nothing leaked into the global manager
 
