@@ -10,6 +10,7 @@ from fastapi.dependencies.utils import get_dependant, solve_dependencies
 
 from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
+from .scope import _current_scope
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -102,7 +103,12 @@ async def resolve_dependencies(
     root_dep.dependencies = effective_dependencies
 
     root_dep.call = cast("Callable[..., Any]", func)
-    async_exit_stack = await async_exit_stack_manager.get_stack(root_dep.call)
+
+    scope = _current_scope.get()
+    if scope is not None:
+        async_exit_stack = scope.exit_stack
+    else:
+        async_exit_stack = await async_exit_stack_manager.get_stack(root_dep.call)
 
     # Use isolated stacks for FastAPI's internal logic to prevent conflicts.
     # We must ensure they are closed when our main stack is closed.
@@ -125,7 +131,10 @@ async def resolve_dependencies(
     if app is not None:
         fake_request_scope["app"] = app
     fake_request = Request(fake_request_scope)
-    cache = dependency_cache.get() if use_cache else None
+    if scope is not None:
+        cache = scope.get_cache() if use_cache else None
+    else:
+        cache = dependency_cache.get() if use_cache else None
     solved_dependency = await solve_dependencies(
         request=fake_request,
         dependant=root_dep,

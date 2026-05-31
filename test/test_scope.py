@@ -50,3 +50,30 @@ async def test_injectable_scope_resets_contextvar_on_exception() -> None:
     with pytest.raises(ValueError, match="boom"):
         await _raise_inside_scope()
     assert _current_scope.get() is None
+
+
+from fastapi_injectable.async_exit_stack import async_exit_stack_manager  # noqa: E402
+from fastapi_injectable.util import async_get_injected_obj  # noqa: E402
+
+
+class Mayor:
+    def __init__(self) -> None:
+        self._is_cleaned_up = False
+
+    def cleanup(self) -> None:
+        self._is_cleaned_up = True
+
+
+async def test_resolution_inside_scope_cleans_up_on_exit_and_skips_global_manager() -> None:
+    async def get_mayor() -> AsyncGenerator[Mayor, None]:
+        mayor = Mayor()
+        yield mayor
+        mayor.cleanup()
+
+    async with injectable_scope():
+        mayor = await async_get_injected_obj(get_mayor)
+        assert mayor._is_cleaned_up is False
+        # nothing leaks into the global, function-keyed manager
+        assert len(async_exit_stack_manager._stacks) == 0
+
+    assert mayor._is_cleaned_up is True
