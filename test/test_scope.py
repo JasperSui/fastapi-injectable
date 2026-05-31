@@ -77,3 +77,51 @@ async def test_resolution_inside_scope_cleans_up_on_exit_and_skips_global_manage
         assert len(async_exit_stack_manager._stacks) == 0
 
     assert mayor._is_cleaned_up is True
+
+
+import asyncio  # noqa: E402
+
+
+async def test_parallel_scopes_clean_up_independently() -> None:
+    opened: dict[str, Mayor] = {}
+    proceed: dict[str, asyncio.Event] = {"a": asyncio.Event(), "b": asyncio.Event()}
+    done: dict[str, asyncio.Event] = {"a": asyncio.Event(), "b": asyncio.Event()}
+    both_open = asyncio.Event()
+
+    async def get_mayor() -> AsyncGenerator[Mayor, None]:
+        mayor = Mayor()
+        yield mayor
+        mayor.cleanup()
+
+    async def process(name: str) -> None:
+        async with injectable_scope():
+            mayor = await async_get_injected_obj(get_mayor)
+            opened[name] = mayor
+            if len(opened) == 2:
+                both_open.set()
+            await proceed[name].wait()
+        done[name].set()  # scope fully closed here
+
+    task_a = asyncio.create_task(process("a"))
+    task_b = asyncio.create_task(process("b"))
+    try:
+        await both_open.wait()
+        assert opened["a"]._is_cleaned_up is False
+        assert opened["b"]._is_cleaned_up is False
+        assert opened["a"] is not opened["b"]  # isolated caches -> distinct instances
+
+        # Let A finish and tear down; B must be unaffected.
+        proceed["a"].set()
+        await done["a"].wait()
+        assert opened["a"]._is_cleaned_up is True
+        assert opened["b"]._is_cleaned_up is False  # <- isolation proven
+
+        proceed["b"].set()
+        await asyncio.gather(task_a, task_b)
+    finally:
+        for task in (task_a, task_b):
+            if not task.done():
+                task.cancel()
+
+    assert opened["a"]._is_cleaned_up is True
+    assert opened["b"]._is_cleaned_up is True
