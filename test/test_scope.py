@@ -57,6 +57,7 @@ from typing import Annotated  # noqa: E402
 from fastapi import Depends  # noqa: E402
 
 from fastapi_injectable.async_exit_stack import async_exit_stack_manager  # noqa: E402
+from fastapi_injectable.decorator import injectable  # noqa: E402
 from fastapi_injectable.util import async_get_injected_obj  # noqa: E402
 
 
@@ -220,3 +221,76 @@ def test_public_api_exports_scope_symbols() -> None:
     assert "injectable_scope" in fastapi_injectable.__all__
     assert ExportedScope is InjectableScope
     assert exported_factory is injectable_scope
+
+
+async def test_exception_inside_scope_still_cleans_up() -> None:
+    captured: dict[str, Mayor] = {}
+
+    async def get_mayor() -> AsyncGenerator[Mayor, None]:
+        mayor = Mayor()
+        yield mayor
+        mayor.cleanup()
+
+    with pytest.raises(ValueError, match="boom"):  # noqa: PT012
+        async with injectable_scope():
+            captured["m"] = await async_get_injected_obj(get_mayor)
+            assert captured["m"]._is_cleaned_up is False
+            msg = "boom"
+            raise ValueError(msg)
+
+    assert captured["m"]._is_cleaned_up is True
+    assert _current_scope.get() is None
+
+
+async def test_custom_callback_rides_scope_lifecycle_in_lifo_order() -> None:
+    order: list[str] = []
+
+    async def get_mayor() -> AsyncGenerator[Mayor, None]:
+        mayor = Mayor()
+        yield mayor
+        order.append("dependency")
+
+    async def my_cleanup() -> None:
+        order.append("callback")
+
+    async with injectable_scope() as scope:
+        await async_get_injected_obj(get_mayor)  # registers dependency cleanup first
+        scope.exit_stack.push_async_callback(my_cleanup)  # pushed last → runs first
+
+    assert order == ["callback", "dependency"]
+
+
+async def test_injectable_decorated_function_uses_active_scope() -> None:
+    captured: dict[str, Mayor] = {}
+
+    async def get_mayor() -> AsyncGenerator[Mayor, None]:
+        mayor = Mayor()
+        yield mayor
+        mayor.cleanup()
+
+    @injectable
+    async def handler(mayor: Annotated[Mayor, Depends(get_mayor)]) -> Mayor:
+        return mayor
+
+    async with injectable_scope():
+        captured["m"] = await handler()
+        assert captured["m"]._is_cleaned_up is False
+        assert len(async_exit_stack_manager._stacks) == 0  # nothing leaked into the global manager
+
+    assert captured["m"]._is_cleaned_up is True
+
+
+async def test_no_scope_falls_back_to_global_manager() -> None:
+    from fastapi_injectable.util import cleanup_exit_stack_of_func
+
+    async def get_mayor() -> AsyncGenerator[Mayor, None]:
+        mayor = Mayor()
+        yield mayor
+        mayor.cleanup()
+
+    mayor = await async_get_injected_obj(get_mayor)
+    assert mayor._is_cleaned_up is False
+    assert len(async_exit_stack_manager._stacks) >= 1  # registered globally as before
+
+    await cleanup_exit_stack_of_func(get_mayor)
+    assert mayor._is_cleaned_up is True
