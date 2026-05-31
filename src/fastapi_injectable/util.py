@@ -11,6 +11,7 @@ from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
 from .concurrency import run_coroutine_sync
 from .decorator import injectable
+from .scope import InjectableScope, _current_scope
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
@@ -169,6 +170,7 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T: ...
 
 
@@ -179,6 +181,7 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T: ...
 
 
@@ -189,6 +192,7 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T: ...
 
 
@@ -199,6 +203,7 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T: ...
 
 
@@ -213,6 +218,7 @@ def get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T:
     """Get an injected object from a dependency function with FastAPI's dependency injection.
 
@@ -228,6 +234,11 @@ def get_injected_obj(
         args: Positional arguments to pass to the dependency function.
         kwargs: Keyword arguments to pass to the dependency function.
         use_cache: Whether to cache resolved dependencies. Defaults to True.
+        scope: An explicit ``InjectableScope`` to route this resolution into,
+            without entering it as the active scope. When provided, the
+            ContextVar is temporarily set for the duration of the call and
+            reset in a ``finally`` block, so it never leaks to the caller.
+            Defaults to ``None`` (use the active scope or global manager).
 
     Returns:
         The first value yielded/returned by the dependency function after injection.
@@ -259,6 +270,11 @@ def get_injected_obj(
         - For generator functions, only the first yielded value is returned
         - Cleanup code in generators will be executed when calling cleanup functions
         - Uses FastAPI's dependency injection system under the hood
+        - The ``scope`` parameter is async-first. Under the ``background_thread``
+          loop strategy the ContextVar is not propagated across threads, so an
+          explicit scope is not visible inside the background loop. Prefer the
+          async API (``async_get_injected_obj`` / ``injectable_scope``) for
+          scoped resolution.
     """
     if args is None:
         args = []
@@ -272,11 +288,16 @@ def get_injected_obj(
 
     wrapped_func = _create_depends_function(func)
     injectable_func = injectable(wrapped_func, use_cache=use_cache)
-    result = injectable_func()  # type: ignore[no-untyped-call]
 
-    if inspect.isawaitable(result):
-        return cast("T", run_coroutine_sync(result))  # type: ignore[arg-type] # pragma: no cover
-    return cast("T", result)
+    token = _current_scope.set(scope) if scope is not None else None
+    try:
+        result = injectable_func()  # type: ignore[no-untyped-call]
+        if inspect.isawaitable(result):
+            return cast("T", run_coroutine_sync(result))  # type: ignore[arg-type] # pragma: no cover
+        return cast("T", result)
+    finally:
+        if token is not None:
+            _current_scope.reset(token)
 
 
 @overload
@@ -286,6 +307,7 @@ async def async_get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T: ...
 
 
@@ -296,6 +318,7 @@ async def async_get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T: ...
 
 
@@ -305,6 +328,7 @@ async def async_get_injected_obj(
     kwargs: dict[str, Any] | None = None,
     *,
     use_cache: bool = True,
+    scope: InjectableScope | None = None,
 ) -> T:
     """Async version of get_injected_obj() for use in running event loops.
 
@@ -322,6 +346,13 @@ async def async_get_injected_obj(
         args: Positional arguments to pass to the dependency function.
         kwargs: Keyword arguments to pass to the dependency function.
         use_cache: Whether to cache resolved dependencies. Defaults to True.
+        scope: An explicit ``InjectableScope`` to route this resolution into.
+            The scope is applied to this call's dependency resolution within
+            the current event loop task (its lifecycle is owned by the
+            caller — this does not enter or close the scope). The ContextVar
+            is set for the duration of the awaited call and reset in a
+            ``finally`` block so it never leaks to the caller. Defaults to
+            ``None`` (use the active scope or global manager).
 
     Returns:
         The first value yielded/returned by the dependency function after injection.
@@ -367,6 +398,13 @@ async def async_get_injected_obj(
     # Use async version to trigger async_wrapper path in injectable decorator
     wrapped_func = _create_async_depends_function(func)
     injectable_func = injectable(wrapped_func, use_cache=use_cache)
+    if scope is not None:
+        token = _current_scope.set(scope)
+        try:
+            coro = cast("Callable[..., Awaitable[T]]", injectable_func)()
+            return await coro
+        finally:
+            _current_scope.reset(token)
     coro = cast("Callable[..., Awaitable[T]]", injectable_func)()
     return await coro
 
