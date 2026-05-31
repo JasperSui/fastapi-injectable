@@ -190,3 +190,22 @@ async def test_scope_use_cache_false_disables_dedup() -> None:
         a = await async_get_injected_obj(get_capital_a, use_cache=False)
         b = await async_get_injected_obj(get_capital_b, use_cache=False)
         assert a.mayor is not b.mayor  # no cache → distinct Mayors
+
+
+async def test_explicit_scope_routes_resolution_without_owning_lifecycle() -> None:
+    async def get_mayor() -> AsyncGenerator[Mayor, None]:
+        mayor = Mayor()
+        yield mayor
+        mayor.cleanup()
+
+    scope = InjectableScope()
+    assert _current_scope.get() is None
+
+    # Manage the scope's stack lifecycle by hand (do NOT enter it as the active
+    # scope); route a single resolution into it with scope=.
+    async with scope.exit_stack:
+        mayor = await async_get_injected_obj(get_mayor, scope=scope)
+        assert _current_scope.get() is None  # scope= must not leak the ContextVar
+        assert mayor._is_cleaned_up is False
+
+    assert mayor._is_cleaned_up is True  # cleaned only when WE closed the stack
