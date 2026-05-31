@@ -209,3 +209,14 @@ async def test_explicit_scope_routes_resolution_without_owning_lifecycle() -> No
         assert mayor._is_cleaned_up is False
 
     assert mayor._is_cleaned_up is True  # cleaned only when WE closed the stack
+
+
+def test_public_api_exports_scope_symbols() -> None:
+    import fastapi_injectable
+    from fastapi_injectable import InjectableScope as ExportedScope
+    from fastapi_injectable import injectable_scope as exported_factory
+
+    assert "InjectableScope" in fastapi_injectable.__all__
+    assert "injectable_scope" in fastapi_injectable.__all__
+    assert ExportedScope is InjectableScope
+    assert exported_factory is injectable_scope
