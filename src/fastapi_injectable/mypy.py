@@ -20,6 +20,7 @@ from mypy.nodes import (
     ARG_POS,
     ArgKind,
     Argument,
+    CallExpr,
     Decorator,
     Expression,
     FuncDef,
@@ -32,10 +33,19 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-INJECTABLE_DECORATOR_FULLNAMES = {
-    "fastapi_injectable.decorator.injectable",
-    "src.fastapi_injectable.decorator.injectable",
-}
+INJECTABLE_DECORATOR_FULLNAME = "fastapi_injectable.decorator.injectable"
+
+
+def _is_injectable_fullname(fullname: str) -> bool:
+    """Check whether a fully-qualified name refers to fastapi-injectable's ``injectable``.
+
+    The decorator always lives in ``fastapi_injectable.decorator``. When this repository
+    is type-checked in place (an editable / ``src``-layout checkout, e.g. its own test
+    suite imported as ``src.fastapi_injectable``), the same symbol additionally resolves
+    under a ``src.`` prefix, so the canonical suffix is matched too -- rather than shipping
+    the dev-only ``src.`` path inside the installed plugin.
+    """
+    return fullname == INJECTABLE_DECORATOR_FULLNAME or fullname.endswith(f".{INJECTABLE_DECORATOR_FULLNAME}")
 
 
 class FastApiInjectablePlugin(Plugin):
@@ -59,21 +69,32 @@ class FastApiInjectablePlugin(Plugin):
         if not sym_table_node or not isinstance(sym_table_node.node, Decorator):
             return None
 
-        if any(
-            name_expr.fullname in INJECTABLE_DECORATOR_FULLNAMES
-            for name_expr in sym_table_node.node.decorators
-            if isinstance(name_expr, NameExpr)
-        ):
+        if any(self._is_injectable_decorator(decorator) for decorator in sym_table_node.node.decorators):
             return self._process_injectable_function_signature
 
         return None
+
+    @staticmethod
+    def _is_injectable_decorator(decorator: Expression) -> bool:
+        """Check whether a decorator expression refers to @injectable.
+
+        Both the bare ``@injectable`` form (a ``NameExpr``) and the parametrized
+        ``@injectable(use_cache=False)`` form (a ``CallExpr`` whose callee is the
+        ``injectable`` name) must be recognized -- the parametrized form is the one
+        the README documents and the test suite predominantly uses.
+        """
+        if isinstance(decorator, NameExpr):
+            return _is_injectable_fullname(decorator.fullname)
+        if isinstance(decorator, CallExpr) and isinstance(decorator.callee, NameExpr):
+            return _is_injectable_fullname(decorator.callee.fullname)
+        return False
 
     def get_function_hook(self, fullname: str) -> Callable[[FunctionContext], Type] | None:
         """Hook for modifying method/function calls.
 
         This handles injectable(func) direct calls.
         """
-        if fullname in INJECTABLE_DECORATOR_FULLNAMES:
+        if _is_injectable_fullname(fullname):
             return self._process_injectable_call
         return None
 
@@ -156,11 +177,13 @@ class FastApiInjectablePlugin(Plugin):
             if arg_node.type_annotation and self._is_fastapi_depends_annotation(arg_node.type_annotation):  # type: ignore[arg-type]
                 current_kind = original_arg_kinds[i]
 
-                # Make required arguments optional
-                if current_kind == ARG_POS:  # Required positional
-                    modified_arg_kinds[i] = ARG_OPT  # Make optional positional
-                elif current_kind == ARG_NAMED:  # Required keyword-only
-                    modified_arg_kinds[i] = ARG_NAMED_OPT  # Make optional keyword-only
+                # Make required dependency arguments optional *and keyword-only*. The
+                # runtime always merges injected deps into kwargs (decorator.py), so a
+                # caller may only override a dep by keyword or omit it -- never pass it
+                # positionally. Emitting ARG_OPT (optional positional) would greenlight a
+                # positional call that crashes at runtime, so use ARG_NAMED_OPT instead.
+                if current_kind in (ARG_POS, ARG_NAMED):
+                    modified_arg_kinds[i] = ARG_NAMED_OPT
 
         return modified_arg_kinds
 
