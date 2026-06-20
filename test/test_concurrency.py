@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import inspect
 import threading
 import time
 from typing import Any
@@ -503,3 +504,61 @@ def test_get_background_loop_rechecks_existing_loop_inside_lock(loop_manager_ins
     assert result is sentinel_loop
     mock_new_event_loop.assert_not_called()
     mock_thread.assert_not_called()
+
+
+# --- Scope #5A: set_loop_strategy validates the strategy name ---
+
+
+def test_set_loop_strategy_rejects_unknown_strategy(loop_manager_instance: LoopManager) -> None:
+    """An unknown strategy name must raise ValueError instead of silently using background_thread."""
+    with pytest.raises(ValueError, match="Unknown loop strategy"):
+        loop_manager_instance.set_loop_strategy("isolted")  # type: ignore[arg-type]
+
+    # A rejected set must not change the configured strategy.
+    assert loop_manager_instance.loop_strategy == "current"
+
+
+# --- Scope #5C: run_in_loop redirects the 'event loop is already running' error ---
+
+
+def test_run_in_loop_already_running_raises_helpful_error(loop_manager_instance: LoopManager) -> None:
+    """A 'loop already running' RuntimeError is re-raised pointing the user to async_get_injected_obj()."""
+    mock_loop = Mock()
+    mock_loop.run_until_complete.side_effect = RuntimeError("This event loop is already running")
+
+    async def coro() -> None:
+        return None
+
+    dropped = coro()
+    with patch.object(loop_manager_instance, "get_loop", return_value=mock_loop):
+        loop_manager_instance.set_loop_strategy("current")
+        with pytest.raises(RuntimeError, match="async_get_injected_obj") as exc_info:
+            loop_manager_instance.run_in_loop(dropped)
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    # The dropped coroutine is closed so Python does not also emit a "never awaited" warning.
+    assert inspect.getcoroutinestate(dropped) == inspect.CORO_CLOSED
+
+
+def test_run_in_loop_other_runtime_error_propagates(loop_manager_instance: LoopManager) -> None:
+    """A RuntimeError unrelated to an already-running loop is propagated unchanged."""
+    mock_loop = Mock()
+    mock_loop.run_until_complete.side_effect = RuntimeError("some other failure")
+    mock_coro = AsyncMock()
+
+    with patch.object(loop_manager_instance, "get_loop", return_value=mock_loop):
+        loop_manager_instance.set_loop_strategy("current")
+        with pytest.raises(RuntimeError, match="some other failure"):
+            loop_manager_instance.run_in_loop(mock_coro)
+
+
+def test_run_in_loop_already_running_with_non_coroutine_awaitable(loop_manager_instance: LoopManager) -> None:
+    """The already-running redirect also works for non-coroutine awaitables (nothing to close)."""
+    mock_loop = Mock()
+    mock_loop.run_until_complete.side_effect = RuntimeError("This event loop is already running")
+    awaitable = Mock(spec=asyncio.Future)
+
+    with patch.object(loop_manager_instance, "get_loop", return_value=mock_loop):
+        loop_manager_instance.set_loop_strategy("current")
+        with pytest.raises(RuntimeError, match="async_get_injected_obj"):
+            loop_manager_instance.run_in_loop(awaitable)
