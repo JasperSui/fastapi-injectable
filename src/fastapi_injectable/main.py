@@ -1,4 +1,5 @@
 import asyncio
+import importlib.metadata
 import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
@@ -10,12 +11,66 @@ from fastapi.dependencies.utils import get_dependant, solve_dependencies
 
 from .async_exit_stack import async_exit_stack_manager
 from .cache import dependency_cache
+from .exception import FastAPICompatibilityError
 from .scope import _current_scope
 
 T = TypeVar("T")
 P = ParamSpec("P")
 _app: FastAPI | None = None
 _app_lock = asyncio.Lock()
+
+# Keep in sync with the ``fastapi`` pin in pyproject.toml.
+_SUPPORTED_FASTAPI_RANGE = ">=0.112.4,<1.0.0"
+# Keyword parameters of FastAPI's private ``solve_dependencies`` that
+# ``resolve_dependencies`` passes by name. If a future FastAPI within the
+# supported range drops one of these, resolution would otherwise fail at call
+# time with a cryptic ``TypeError``; probing at import time turns that into an
+# actionable, version-named error.
+_REQUIRED_SOLVE_DEPENDENCIES_PARAMS = (
+    "dependency_overrides_provider",
+    "dependency_cache",
+    "async_exit_stack",
+    "embed_body_fields",
+)
+
+
+def _verify_fastapi_compatibility(solve: Callable[..., Any]) -> None:
+    """Fail fast if FastAPI's private dependency-resolution API has drifted.
+
+    Introspects ``solve_dependencies`` and raises ``FastAPICompatibilityError``
+    (naming the installed FastAPI version and the supported range) when an
+    expected keyword parameter is missing.
+
+    Args:
+        solve: FastAPI's ``solve_dependencies`` callable (injected for testing).
+    """
+    try:
+        params = inspect.signature(solve).parameters
+    except (ValueError, TypeError):  # pragma: no cover - builtins expose no signature
+        return
+
+    missing = [name for name in _REQUIRED_SOLVE_DEPENDENCIES_PARAMS if name not in params]
+    if not missing:
+        return
+
+    try:
+        installed = importlib.metadata.version("fastapi")
+    except importlib.metadata.PackageNotFoundError:  # pragma: no cover - fastapi is a hard dependency
+        installed = "unknown"
+
+    msg = (
+        f"fastapi-injectable is incompatible with the installed FastAPI version ({installed}). "
+        f"It relies on FastAPI's private dependency-resolution API "
+        f"(fastapi.dependencies.utils.solve_dependencies), whose signature is missing the "
+        f"expected parameter(s): {', '.join(missing)}. "
+        f"Supported FastAPI range: {_SUPPORTED_FASTAPI_RANGE}. "
+        f"Pin FastAPI to a supported version, or report this at "
+        f"https://github.com/JasperSui/fastapi-injectable/issues."
+    )
+    raise FastAPICompatibilityError(msg)
+
+
+_verify_fastapi_compatibility(solve_dependencies)
 
 
 async def register_app(app: FastAPI) -> None:

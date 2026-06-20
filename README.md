@@ -105,7 +105,13 @@ print(result) # Output: 'data'
 ### Requirements
 
 - Python `3.10` or higher (including `3.13t`, `3.14t` free-threaded builds)
-- FastAPI `0.112.4` or higher
+- FastAPI `>=0.112.4,<1.0.0`
+
+> `fastapi-injectable` resolves dependencies through FastAPI's internal
+> dependency-resolution API. To keep upgrades safe, it checks that API at import
+> time and raises a clear, version-named `FastAPICompatibilityError` if an
+> incompatible FastAPI is installed — instead of failing later with a cryptic
+> `TypeError`.
 
 <!-- homepage-end -->
 
