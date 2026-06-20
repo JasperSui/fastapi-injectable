@@ -322,8 +322,35 @@ async def async_get_injected_obj(
 ) -> T: ...
 
 
+@overload
 async def async_get_injected_obj(
-    func: Callable[P, Awaitable[T]] | Callable[P, AsyncGenerator[T, Any]],
+    func: Callable[..., Generator[T, Any, Any]],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+    scope: InjectableScope | None = None,
+) -> T: ...
+
+
+@overload
+async def async_get_injected_obj(
+    func: Callable[..., T],
+    args: list[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+    *,
+    use_cache: bool = True,
+    scope: InjectableScope | None = None,
+) -> T: ...
+
+
+async def async_get_injected_obj(
+    func: (
+        Callable[P, T]
+        | Callable[P, Awaitable[T]]
+        | Callable[P, Generator[T, Any, Any]]
+        | Callable[P, AsyncGenerator[T, Any]]
+    ),
     args: list[Any] | None = None,
     kwargs: dict[str, Any] | None = None,
     *,
@@ -336,12 +363,17 @@ async def async_get_injected_obj(
     contexts like Kafka consumers, async callbacks, or other scenarios where
     an event loop is already running.
 
-    This function only accepts async functions (coroutines) and async generators.
-    For sync functions, use get_injected_obj() instead.
+    Unlike get_injected_obj(), this works in already-running event loops. It accepts
+    every provider kind that get_injected_obj() does -- sync/async functions, classes,
+    and sync/async generators -- because FastAPI resolves sync providers just like async
+    ones. The async API is preferred whenever an event loop is already running.
 
     Args:
-        func: The async dependency function to inject. Must be:
+        func: The dependency function (or class) to inject. Can be:
+            - A regular synchronous function
             - An async function (coroutine)
+            - A class (its constructor is used as the provider)
+            - A synchronous generator
             - An async generator
         args: Positional arguments to pass to the dependency function.
         kwargs: Keyword arguments to pass to the dependency function.
@@ -378,9 +410,8 @@ async def async_get_injected_obj(
 
     Notes:
         - This function must be called from an async context (use await)
-        - Only accepts async functions and async generators
-        - For sync functions, use get_injected_obj() instead
-        - For async generators, only the first yielded value is returned
+        - Accepts sync/async functions, classes, and sync/async generators
+        - For generator functions, only the first yielded value is returned
         - Cleanup code in generators will be executed when calling cleanup functions
         - Uses FastAPI's dependency injection system under the hood
         - Unlike get_injected_obj(), this works in already-running event loops

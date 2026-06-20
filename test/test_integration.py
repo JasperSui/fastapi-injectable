@@ -1107,6 +1107,86 @@ async def test_async_get_injected_obj_with_async_generator_with_args_and_kwargs(
     cleanup_mock.assert_called_once()
 
 
+async def test_async_get_injected_obj_with_class(
+    clean_exit_stack_manager: None,
+) -> None:
+    """Passing a class (type) directly should work and keep its type. See issue #236."""
+
+    class Service:
+        def __init__(self) -> None:
+            self.value = "from_class"
+
+    # The explicit annotation doubles as a type-level regression guard: before the
+    # Callable[..., T] overload existed, mypy rejected ``type[Service]`` here.
+    service: Service = await async_get_injected_obj(Service)
+    assert isinstance(service, Service)
+    assert service.value == "from_class"
+
+
+async def test_async_get_injected_obj_with_class_with_dependencies(
+    clean_exit_stack_manager: None,
+) -> None:
+    """The exact scenario from issue #236: a class whose __init__ has Depends() params."""
+
+    class Client:
+        def __init__(self) -> None:
+            self.cache = "redis"
+
+    class Repository:
+        def __init__(self, client: Annotated[Client, Depends(Client)]) -> None:
+            self.client = client
+
+    class Service:
+        def __init__(self, repository: Annotated[Repository, Depends(Repository)]) -> None:
+            self.repository = repository
+
+    service: Service = await async_get_injected_obj(Service)
+    assert isinstance(service, Service)
+    assert isinstance(service.repository, Repository)
+    assert service.repository.client.cache == "redis"
+
+
+async def test_async_get_injected_obj_with_sync_function(
+    clean_exit_stack_manager: None,
+) -> None:
+    """A plain sync function provider is matched by the Callable[..., T] overload."""
+
+    class Service:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    def get_service() -> Service:
+        return Service(value="sync_func")
+
+    service: Service = await async_get_injected_obj(get_service)
+    assert isinstance(service, Service)
+    assert service.value == "sync_func"
+
+
+async def test_async_get_injected_obj_with_sync_generator(
+    clean_exit_stack_manager: None,
+) -> None:
+    """A sync generator provider is matched by the Generator[T, Any, Any] overload."""
+    cleanup_mock = Mock()
+
+    class Service:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    def get_service() -> Generator[Service, None, None]:
+        try:
+            yield Service(value="sync_gen")
+        finally:
+            cleanup_mock()
+
+    service: Service = await async_get_injected_obj(get_service)
+    assert isinstance(service, Service)
+    assert service.value == "sync_gen"
+
+    await cleanup_all_exit_stacks()
+    cleanup_mock.assert_called_once()
+
+
 async def test_async_get_injected_obj_with_dependencies(
     clean_exit_stack_manager: None,
 ) -> None:
