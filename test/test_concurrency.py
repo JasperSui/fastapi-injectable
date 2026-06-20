@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from src.fastapi_injectable.concurrency import LoopManager, loop_manager, run_coroutine_sync
+from src.fastapi_injectable.exception import RunCoroutineSyncMaxRetriesError
 
 
 @pytest.fixture
@@ -269,7 +270,7 @@ def test_wait_with_retries_success(loop_manager_instance: LoopManager) -> None:
 
 
 def test_wait_with_retries_timeout(loop_manager_instance: LoopManager) -> None:
-    """Test _wait_with_retries with timeout."""
+    """Test _wait_with_retries raises RunCoroutineSyncMaxRetriesError on timeout."""
     mock_future = Mock(spec=concurrent.futures.Future)
     mock_future.result.side_effect = concurrent.futures.TimeoutError()
 
@@ -277,9 +278,12 @@ def test_wait_with_retries_timeout(loop_manager_instance: LoopManager) -> None:
     loop_manager_instance._background_loop_result_max_retries = 2
     loop_manager_instance._background_loop_result_timeout = 0.1
 
-    with pytest.raises(TimeoutError):
+    # RunCoroutineSyncMaxRetriesError subclasses the builtin TimeoutError, so
+    # existing ``except TimeoutError`` handlers keep working (back-compat).
+    with pytest.raises(TimeoutError) as exc_info:
         loop_manager_instance._wait_with_retries(mock_future)
 
+    assert isinstance(exc_info.value, RunCoroutineSyncMaxRetriesError)
     assert mock_future.result.call_count == 2
     mock_future.cancel.assert_called_once()
 

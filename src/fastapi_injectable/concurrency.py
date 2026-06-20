@@ -5,6 +5,8 @@ import threading
 from collections.abc import Awaitable, Coroutine
 from typing import Any, Literal, TypeVar
 
+from .exception import RunCoroutineSyncMaxRetriesError
+
 T = TypeVar("T")
 
 
@@ -103,8 +105,13 @@ class LoopManager:
                 retries += 1
 
         future.cancel()
-        msg = f"Operation timed out after {max_retries} attempts " f"(total {max_retries * timeout} seconds)"
-        raise TimeoutError(msg)
+        msg = (
+            f"run_coroutine_sync timed out under the 'background_thread' loop strategy after "
+            f"{max_retries} attempts (total {max_retries * timeout} seconds). "
+            f"Tune loop_manager._background_loop_result_timeout / "
+            f"loop_manager._background_loop_result_max_retries to raise these limits."
+        )
+        raise RunCoroutineSyncMaxRetriesError(msg)
 
     def in_loop(self) -> bool:
         loop = self.get_loop()
