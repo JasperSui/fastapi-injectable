@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Generator
 from contextlib import asynccontextmanager
 from functools import partial
@@ -1301,6 +1302,60 @@ async def test_async_get_injected_obj_without_cache(
     # Second call should create new instance
     service2 = await async_get_injected_obj(get_service, use_cache=False)
     assert service2.value == "uncached_2"
+    assert call_count == 2
+
+
+def test_async_get_injected_obj_cache_is_isolated_per_event_loop() -> None:
+    """Regression for https://github.com/JasperSui/fastapi-injectable/issues/186.
+
+    ``async_get_injected_obj(..., use_cache=True)`` (the default) must never serve
+    a resource resolved on one event loop to a *different, still-open* loop. A
+    cached resource commonly holds a loop-bound primitive (an ``httpx``/``anyio``
+    connection pool, an ``asyncpg`` connection, an ``asyncio`` future/lock);
+    awaiting it on another loop blocks forever with no error -- the silent hang
+    the reporter saw -- or raises "got Future attached to a different loop".
+
+    This is the very common pytest topology of a session-scoped fixture loop plus
+    per-test function loops: both loops are alive at once, so the previous
+    "drop the cache only when its owner loop is *closed*" logic never fired.
+    """
+    call_count = 0
+
+    class PooledResource:
+        def __init__(self) -> None:
+            # Capture the creation loop, exactly as real async clients do.
+            self._loop = asyncio.get_running_loop()
+
+        async def request(self) -> int:
+            # Drive work through the creation loop. If this instance is reused on
+            # a different loop, awaiting this future never completes there.
+            fut = self._loop.create_future()
+            self._loop.call_soon(fut.set_result, 1)
+            return await fut
+
+    async def get_resource() -> PooledResource:
+        nonlocal call_count
+        call_count += 1
+        return PooledResource()
+
+    async def scenario() -> int:
+        res = await async_get_injected_obj(get_resource, use_cache=True)
+        # Same loop: caching is preserved, the instance is reused.
+        res_again = await async_get_injected_obj(get_resource, use_cache=True)
+        assert res_again is res
+        return await res.request()
+
+    loop_a = asyncio.new_event_loop()
+    loop_b = asyncio.new_event_loop()
+    try:
+        assert loop_a.run_until_complete(scenario()) == 1
+        # loop_a is still OPEN; loop_b must resolve its OWN resource and not hang.
+        assert loop_b.run_until_complete(scenario()) == 1
+    finally:
+        loop_a.close()
+        loop_b.close()
+
+    # Two distinct loops -> two independent resolutions (no cross-loop sharing).
     assert call_count == 2
 
 
