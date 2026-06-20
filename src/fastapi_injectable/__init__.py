@@ -1,5 +1,6 @@
 from .concurrency import loop_manager, run_coroutine_sync
 from .decorator import injectable
+from .logging import configure_logging
 from .main import register_app, resolve_dependencies
 from .scope import InjectableScope, injectable_scope
 from .util import (
