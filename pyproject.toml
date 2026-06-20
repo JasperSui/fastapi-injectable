@@ -44,6 +44,9 @@ Repository = "https://github.com/JasperSui/fastapi-injectable"
 Documentation = "https://fastapi-injectable.readthedocs.io"
 Changelog = "https://github.com/JasperSui/fastapi-injectable/releases"
 
+[project.entry-points.pytest11]
+fastapi_injectable = "fastapi_injectable.pytest_plugin"
+
 [dependency-groups]
 dev = [
     "nox>=2025.05.01",
