@@ -730,7 +730,26 @@ setup_graceful_shutdown(
     signals=[signal.SIGTERM],
     raise_exception=True
 )
+
+# Option #4: Only register the atexit cleanup, without installing OS signal handlers
+# (useful when a framework already owns SIGTERM/SIGINT, or when calling off the main thread)
+setup_graceful_shutdown(install_signal_handlers=False)
 ```
+
+**How the signal handler behaves:**
+
+- **It still terminates the process.** After running cleanup, the handler re-raises termination so
+  your process exits as usual: `SIGINT` raises `KeyboardInterrupt` and any other signal (e.g. `SIGTERM`)
+  raises `SystemExit(0)`. This means an orchestrator's `SIGTERM` (Kubernetes, systemd) and `Ctrl-C` keep
+  working — cleanup runs *and then* the process exits, instead of hanging until `SIGKILL`.
+- **It chains your existing handler.** If you already installed a handler for one of these signals,
+  it is captured and invoked after cleanup, so your own shutdown logic (flush metrics, finish in-flight
+  work, close connections) is preserved rather than silently overwritten. `SIG_DFL`/`SIG_IGN` are left
+  alone.
+- **It must run on the main thread.** Python only allows `signal.signal()` to be called from the main
+  thread of the main interpreter. If you call `setup_graceful_shutdown()` from another thread, signal
+  registration is skipped with a warning and only the `atexit` cleanup is registered — it will **not**
+  raise `ValueError`. Pass `install_signal_handlers=False` to opt out of signal handling explicitly.
 
 
 ### App Registration for State Access
