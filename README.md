@@ -41,6 +41,8 @@
 
 **Installation**: `pip install fastapi-injectable`
 
+> **Using `mypy`?** Enable the bundled plugin so `@injectable` calls type-check correctly — add `plugins = ["fastapi_injectable.mypy"]` to your `mypy` config (see [Type Hinting](#type-hinting)). The plugin is `mypy`-only; `pyright`/Pylance users still see `call-arg` errors.
+
 **Documentation**: <a href="https://fastapi-injectable.readthedocs.io/en/latest/" target="_blank">https://fastapi-injectable.readthedocs.io/en/latest/</a>
 
 ---
@@ -81,6 +83,8 @@ result = process_data()
 print(result) # Output: 'data'
 ```
 
+> **⚠️ Calling this in a loop (worker, consumer, cron)?** Resolved dependencies are cached in a **process-global** cache that persists across calls — a naïve loop reuses the *same* instances for the whole process and never runs generator cleanup, leaking resources. Reset state per iteration with [`injectable_scope()`](#3-isolated-dependency-scopes-for-parallel-work), or with `clear_dependency_cache()` + `cleanup_all_exit_stacks()`. See [Long-running workers: reset state per iteration](#long-running-workers-reset-state-per-iteration).
+
 ## Key Features
 
 | Feature | Description |
@@ -91,7 +95,7 @@ print(result) # Output: 'data'
 | **Resource cleanup** | Built-in lifecycle management for generator deps |
 | **Dependency caching** | Optional caching for better performance |
 | **App state access** | Register your FastAPI app to access `app.state` in deps |
-| **Mypy plugin** | Full type-checking support out of the box |
+| **Mypy plugin** | Opt-in `mypy` plugin for full type-checking — enable `plugins = ["fastapi_injectable.mypy"]` (mypy only) |
 | **Graceful shutdown** | Automatic cleanup on program exit via signal handling |
 
 ## Overview
@@ -118,7 +122,7 @@ The most basic way to use dependency injection is through the `@injectable` deco
 from typing import Annotated
 
 from fastapi import Depends
-from fastapi_injectable.decorator import injectable
+from fastapi_injectable import injectable
 
 class Database:
     def __init__(self) -> None:
@@ -149,7 +153,10 @@ Here's how to use it:
 
 
 ```python
-from fastapi_injectable.util import get_injected_obj
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi_injectable import get_injected_obj
 
 class Database:
     def __init__(self) -> None:
@@ -157,6 +164,9 @@ class Database:
 
     def query(self) -> str:
         return "data"
+
+def get_database() -> Database:
+    return Database()
 
 def process_data(db: Annotated[Database, Depends(get_database)]):
     return db.query()
@@ -186,7 +196,7 @@ When you're working in an async context where an event loop is already running (
 Here's how to use it:
 
 ```python
-from fastapi_injectable.util import async_get_injected_obj
+from fastapi_injectable import async_get_injected_obj
 
 class MessageProcessor:
     def __init__(self, db: Database) -> None:
@@ -262,6 +272,64 @@ print(process_data(db=mock_db)) # Explicitly pass the mock dependency
 # Output: "mock data"
 ```
 
+### Testing with `dependency_overrides`
+
+The [Manual Overrides](#manual-overrides) above only replace **top-level** parameters of the entry-point function — they can't reach a **nested** dependency resolved deeper in the chain. To swap one out (the usual case in tests), use FastAPI's native `app.dependency_overrides`, which `fastapi-injectable` honors once you `register_app()`:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
+from fastapi_injectable import (
+    clear_dependency_cache,
+    injectable,
+    register_app,
+    run_coroutine_sync,
+)
+
+
+class Database:
+    def __init__(self, dsn: str) -> None:
+        self.dsn = dsn
+
+
+class Repo:
+    def __init__(self, db: Database) -> None:
+        self.db = db
+
+
+def get_db() -> Database:
+    return Database("real")
+
+
+def get_repo(db: Annotated[Database, Depends(get_db)]) -> Repo:
+    return Repo(db)
+
+
+@injectable
+def handle_request(repo: Annotated[Repo, Depends(get_repo)]) -> str:
+    return repo.db.dsn
+
+
+# Register the app so fastapi-injectable consults app.dependency_overrides.
+app = FastAPI()
+run_coroutine_sync(register_app(app))
+
+# Override the *nested* get_db — a kwarg override on handle_request() can't reach it,
+# but dependency_overrides resolves through the whole chain (Repo -> Database).
+app.dependency_overrides[get_db] = lambda: Database("mock")
+try:
+    assert handle_request() == "mock"
+finally:
+    # Reset in teardown so the next test sees the real dependencies again.
+    app.dependency_overrides.clear()
+    run_coroutine_sync(clear_dependency_cache())
+
+assert handle_request() == "real"
+```
+
+This is the same mechanism you already use for FastAPI route tests, so existing test helpers carry over. It works for sync, async, and generator dependencies alike — see [`test/test_integration.py`](https://github.com/JasperSui/fastapi-injectable/tree/main/test/test_integration.py) for the full matrix.
+
 ### Generator Dependencies with Cleanup
 
 When working with generator dependencies that require cleanup (like database connections or file handles), `fastapi-injectable` provides built-in support for controlling dependency lifecycles and proper resource management with error handling.
@@ -270,8 +338,16 @@ Here's an example showing how to work with generator dependencies:
 
 ```python
 from collections.abc import Generator
+from typing import Annotated
 
-from fastapi_injectable.util import cleanup_all_exit_stacks, cleanup_exit_stack_of_func
+from fastapi import Depends
+from fastapi_injectable import (
+    cleanup_all_exit_stacks,
+    cleanup_exit_stack_of_func,
+    clear_dependency_cache,
+    injectable,
+    run_coroutine_sync,
+)
 from fastapi_injectable.exception import DependencyCleanupError
 
 class Database:
@@ -301,21 +377,27 @@ def get_machine(db: Annotated[Database, Depends(get_database)]):
 # Use the function
 machine = get_machine()
 
+# The cleanup helpers are async. In sync code (CLI tools, workers, cron) wrap them
+# with run_coroutine_sync(); in async code you can `await` them directly instead.
+
 # Option #1: Silent cleanup when done for a single decorated function (logs errors but doesn't raise)
 assert machine.db.closed is False
-await cleanup_exit_stack_of_func(get_machine)
+run_coroutine_sync(cleanup_exit_stack_of_func(get_machine))
 assert machine.db.closed is True
 
 # Option #2: Strict cleanup with error handling
 try:
-    await cleanup_exit_stack_of_func(get_machine, raise_exception=True)
+    run_coroutine_sync(cleanup_exit_stack_of_func(get_machine, raise_exception=True))
 except DependencyCleanupError as e:
     print(f"Cleanup failed: {e}")
 
 # Option #3: If you don't care about the other injectable functions,
-#              just use the cleanup_all_exit_stacks() to cleanup all at once.
+#            just use cleanup_all_exit_stacks() to clean up everything at once.
+#            (Reset the process-global cache first so there's a fresh machine to clean.)
+run_coroutine_sync(clear_dependency_cache())
+machine = get_machine()
 assert machine.db.closed is False
-await cleanup_all_exit_stacks() # can still pass the raise_exception=True to raise the error if you want
+run_coroutine_sync(cleanup_all_exit_stacks()) # accepts raise_exception=True too
 assert machine.db.closed is True
 ```
 
@@ -324,7 +406,12 @@ assert machine.db.closed is True
 `fastapi-injectable` provides full support for both synchronous and asynchronous dependencies, allowing you to mix and match them as needed. You can freely use async dependencies in sync functions and vice versa. For cases where you need to run async code in a synchronous context, we provide the `run_coroutine_sync` utility function.
 
 ```python
+import asyncio
 from collections.abc import AsyncGenerator
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi_injectable import injectable, run_coroutine_sync
 
 class AsyncDatabase:
     def __init__(self) -> None:
@@ -345,15 +432,16 @@ async def get_async_database() -> AsyncGenerator[AsyncDatabase, None]:
 async def async_process_data(db: Annotated[AsyncDatabase, Depends(get_async_database)]):
     return await db.query()
 
-# Use it with async/await
-result = await async_process_data()
-print(result) # Output: 'data'
-
-# In sync func, you can still get the result by using `run_coroutine_sync()`
-from fastapi_injectable.concurrency import run_coroutine_sync
-
+# In sync code (no running loop), block on it with run_coroutine_sync():
 result = run_coroutine_sync(async_process_data())
 print(result) # Output: 'data'
+
+# In async code, await the injectable directly:
+async def main() -> None:
+    result = await async_process_data()
+    print(result) # Output: 'data'
+
+asyncio.run(main())
 ```
 
 ### Dependency Caching Control
@@ -374,7 +462,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from fastapi_injectable.decorator import injectable
+from fastapi_injectable import injectable
 
 class Mayor:
     pass
@@ -416,6 +504,64 @@ assert country_1.capital is not country_2.capital is not country_3.capital
 assert country_1.capital.mayor is not country_2.capital.mayor is not country_3.capital.mayor
 ```
 
+### Long-running workers: reset state per iteration
+
+By default, resolved dependencies live in a **process-global** cache, and the cleanup for generator dependencies is held in a **process-global** exit stack — neither is reset automatically. In a one-shot script that's fine, but in a **worker / consumer / cron loop** it means every iteration silently reuses the *same* instances, and the generators' cleanup (closing connections, files, sessions) never runs until the process exits. The fix is to resolve fresh dependencies per message and reset after each one:
+
+```python
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi_injectable import (
+    cleanup_exit_stack_of_func,
+    clear_dependency_cache,
+    injectable,
+    run_coroutine_sync,
+)
+
+
+class Connection:
+    def __init__(self) -> None:
+        self.open = True
+
+    def close(self) -> None:
+        self.open = False
+
+
+def get_connection():  # a generator dependency that must be cleaned up
+    conn = Connection()
+    print("  opened connection")
+    try:
+        yield conn
+    finally:
+        conn.close()
+        print("  closed connection")
+
+
+@injectable
+def handle(conn: Annotated[Connection, Depends(get_connection)]) -> str:
+    return f"open={conn.open}"
+
+
+def process(messages: list[str]) -> None:
+    for message in messages:
+        result = handle()  # fresh resolution for this message
+        print(message, "->", result)
+
+        # Reset *after each message*: run the generator cleanup for this call tree,
+        # then drop the cache — so the next iteration starts from a clean slate.
+        # The cleanup helpers are async, so wrap them with run_coroutine_sync() in sync code.
+        run_coroutine_sync(cleanup_exit_stack_of_func(handle))
+        run_coroutine_sync(clear_dependency_cache())
+
+
+process(["msg-1", "msg-2"])
+```
+
+Each iteration prints `opened connection` / `closed connection`, proving resources are released per message instead of leaking for the lifetime of the process.
+
+**Prefer a context manager?** In async workers, [`injectable_scope()`](#3-isolated-dependency-scopes-for-parallel-work) wraps this whole pattern — each `async with injectable_scope():` block gets its own exit stack and cache and cleans up on exit, so you can't forget the reset (and it's safe under `asyncio.TaskGroup` fan-out). To also clean up when the **process** exits (SIGTERM/SIGINT), call [`setup_graceful_shutdown()`](#graceful-shutdown). For full, copy-pasteable worker recipes — Celery, Dramatiq, Temporal, and a Typer CLI — see [Real-world Examples](https://fastapi-injectable.readthedocs.io/en/latest/real-world-examples.html).
+
 ### Type Hinting
 
 `fastapi-injectable` will prepare the dependency objects of injected functions for you, but static type checkers like `mypy` haven't known about the dependency object existence since they are normally injected via `Annotated[Type, Depends(get_dependency_func)]`, when using this kind of expression, static type checkers will complain if you don't explicitly provide the dependency object when using the function, example error codes ([call-arg](https://mypy.readthedocs.io/en/stable/error_code_list.html#check-arguments-in-calls-call-arg)).
@@ -445,12 +591,14 @@ def get_country(capital: Annotated[Capital, Depends(get_capital)]) -> Country:
 country = get_country() # Now it's happy!
 ```
 
+> **Note:** The plugin is a `mypy` plugin, so only `mypy` benefits from it. `pyright`/Pylance (the default type checker in VS Code) cannot load it and will still report `call-arg` errors on `@injectable` calls.
+
 ### Event Loop Management
 
 `fastapi-injectable` includes a powerful loop management system to handle asynchronous code execution in different contexts. This is particularly useful when working with async code in synchronous environments or when you need controlled event loop execution.
 
 ```python
-from fastapi_injectable.concurrency import loop_manager, run_coroutine_sync
+from fastapi_injectable import loop_manager, run_coroutine_sync
 
 # Configure loop strategy
 # Options: "current" (default), "isolated", or "background_thread"
@@ -590,9 +738,19 @@ setup_graceful_shutdown(
 If your dependencies need access to the FastAPI app state (like database connections or other services), you can register your app with `fastapi-injectable`:
 
 ```python
-from fastapi import FastAPI, Request, Depends
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Request
 from fastapi_injectable import injectable, register_app
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 # Define your dependencies that need app state access
 def get_db_engine(*, request: Request) -> AsyncEngine:
@@ -626,8 +784,12 @@ async def process_data(db: DB) -> str:
     result = await db.execute(...)
     return result
 
-# Use it in background tasks, CLI tools, etc.
-result = await process_data()
+# Use it in background tasks, CLI tools, etc. (once `register_app` has run via the app lifecycle)
+async def main() -> None:
+    result = await process_data()
+
+
+asyncio.run(main())
 ```
 
 This is particularly useful when:
@@ -698,13 +860,20 @@ async def consume(events) -> None:
 `InjectableScope` is also usable directly when you want to manage a scope's lifecycle yourself and inject into it from several places. Pass it with `scope=`; this routes resolution into that scope without taking ownership of it (you close it):
 
 ```python
+import asyncio
+
 from fastapi_injectable import InjectableScope, async_get_injected_obj
 
-scope = InjectableScope()
-async with scope:
-    a = await async_get_injected_obj(get_a, scope=scope)
-    scope.exit_stack.push_async_callback(my_cleanup)  # rides the same lifecycle
-# a and my_cleanup are torn down together when the block exits
+
+async def main() -> None:
+    scope = InjectableScope()
+    async with scope:
+        a = await async_get_injected_obj(get_a, scope=scope)
+        scope.exit_stack.push_async_callback(my_cleanup)  # rides the same lifecycle
+    # a and my_cleanup are torn down together when the block exits
+
+
+asyncio.run(main())
 ```
 
 #### Notes & limitations
@@ -735,6 +904,10 @@ This example demonstrates several key patterns for using dependency injection in
 3. **Graceful Shutdown**:
    - `setup_graceful_shutdown()` ensures resources are cleaned up on program termination
    - Handles both SIGTERM and SIGINT signals
+
+### 2. [Framework integrations: Celery, Dramatiq, Temporal, Typer/Click](https://fastapi-injectable.readthedocs.io/en/latest/real-world-examples.html#2-framework-integrations)
+
+Copy-pasteable recipes for wiring `@injectable` into the task/worker frameworks the package targets — distilled from the CI integration tests so they stay verified. The rule is the same for all: framework decorator on the outside, `@injectable` on the inside.
 
 Please refer to the [Real-world Examples](https://fastapi-injectable.readthedocs.io/en/latest/real-world-examples.html) for more details.
 
@@ -802,10 +975,13 @@ A: Yes! It supports:
 
 ### What happens to dependency cleanup in long-running processes?
 
-A: You have three options:
+A: You have a few options:
 1. Manual cleanup per function: `await cleanup_exit_stack_of_func(your_func)`
 2. Cleanup everything: `await cleanup_all_exit_stacks()`
-3. Automatic cleanup on shutdown: `setup_graceful_shutdown()`
+3. Reset the (process-global) dependency cache: `await clear_dependency_cache()`
+4. Automatic cleanup on shutdown: `setup_graceful_shutdown()`
+
+In a worker/consumer loop, combine 1 (or 2) with 3 after each message — or wrap each unit of work in `injectable_scope()`, which does both for you. See [Long-running workers: reset state per iteration](#long-running-workers-reset-state-per-iteration). In sync code, wrap the async helpers with `run_coroutine_sync(...)`.
 
 <hr>
 
@@ -837,7 +1013,7 @@ A: Currently, type hint support is available if you are using `mypy` as your sta
 
 ### How does caching work?
 
-A: By default, dependencies are cached like in FastAPI routes. You can disable caching with `@injectable(use_cache=False)` if you need fresh instances.
+A: By default, resolved dependencies are cached in a **process-global** cache that lives for the lifetime of the process. This differs from FastAPI routes, where the cache is request-scoped and discarded after each request — here nothing is auto-cleared, so a long-running worker reuses the same instances across iterations until you reset it. To control it: disable per-function caching with `@injectable(use_cache=False)`, scope it per unit of work with `injectable_scope()`, or reset it manually with `await clear_dependency_cache()`. See [Long-running workers: reset state per iteration](#long-running-workers-reset-state-per-iteration).
 
 <hr>
 
