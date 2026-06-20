@@ -52,11 +52,8 @@ class AsyncExitStackManager:
                     await stack.aclose()
                 else:
                     loop_manager.run_in_loop(stack.aclose())  # pragma: no cover
-            except RuntimeError as e:  # pragma: no cover
-                msg = (
-                    f"Cannot cleanup stack for {func.__name__} because there is something wrong with the loop. "
-                    "Resources may not be properly released."
-                )
+            except RuntimeError as e:
+                msg = f"Failed to cleanup stack for {func.__name__} during teardown: {e}"
                 logger.warning(msg)
                 exception_ = e
             except Exception as e:  # noqa: BLE001 # pragma: no cover
@@ -65,7 +62,7 @@ class AsyncExitStackManager:
                 exception_ = e
 
         if exception_ and raise_exception:
-            raise DependencyCleanupError(msg) from exception_  # pragma: no cover
+            raise DependencyCleanupError(msg) from exception_
 
     async def cleanup_all_stacks(self, *, raise_exception: bool = False) -> None:
         """Clean up all stacks.
@@ -100,11 +97,8 @@ class AsyncExitStackManager:
                     # the gather future will be awaited in the current loop, not the loop in the loop_manager.
                     # then it will raise an RuntimeError(got Future <_GatheringFuture pending> attached to a different loop)  # noqa: E501
                     loop_manager.run_in_loop(_wrapper())  # pragma: no cover
-            except RuntimeError as e:  # pragma: no cover
-                msg = (
-                    "Cannot cleanup all stacks because there is something wrong with the loop. "
-                    "Resources may not be properly released."
-                )
+            except RuntimeError as e:
+                msg = f"Failed to cleanup one or more dependency stacks during teardown: {e}"
                 logger.warning(msg)
                 exception_ = e
             except Exception as e:  # noqa: BLE001 # pragma: no cover
@@ -113,7 +107,7 @@ class AsyncExitStackManager:
                 exception_ = e
 
         if exception_ and raise_exception:
-            raise DependencyCleanupError(msg) from exception_  # pragma: no cover
+            raise DependencyCleanupError(msg) from exception_
 
 
 async_exit_stack_manager = AsyncExitStackManager()

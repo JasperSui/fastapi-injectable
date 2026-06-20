@@ -7,6 +7,8 @@ from typing import Any, Literal, TypeVar
 
 T = TypeVar("T")
 
+_VALID_LOOP_STRATEGIES: tuple[str, ...] = ("current", "isolated", "background_thread")
+
 
 class LoopManager:
     def __init__(self) -> None:
@@ -81,7 +83,18 @@ class LoopManager:
         return self._loop_strategy
 
     def set_loop_strategy(self, strategy: Literal["current", "isolated", "background_thread"]) -> None:
-        """Set the current setting for whether to use the current loop."""
+        """Set the strategy used to obtain the event loop for running coroutines.
+
+        Args:
+            strategy: One of ``"current"``, ``"isolated"`` or ``"background_thread"``.
+
+        Raises:
+            ValueError: If ``strategy`` is not one of the supported values.
+        """
+        if strategy not in _VALID_LOOP_STRATEGIES:
+            allowed = ", ".join(repr(s) for s in _VALID_LOOP_STRATEGIES)
+            msg = f"Unknown loop strategy {strategy!r}; expected one of {allowed}."
+            raise ValueError(msg)
         with self._lock:
             self._loop_strategy = strategy
 
@@ -137,7 +150,22 @@ class LoopManager:
         loop = self.get_loop()
 
         if self._loop_strategy in {"current", "isolated"}:
-            return loop.run_until_complete(awaitable)
+            try:
+                return loop.run_until_complete(awaitable)
+            except RuntimeError as e:
+                if "already running" not in str(e):
+                    raise
+                # Close the dropped coroutine so Python does not also emit a noisy
+                # "coroutine was never awaited" RuntimeWarning on top of our error.
+                if asyncio.iscoroutine(awaitable):
+                    awaitable.close()
+                msg = (
+                    "Cannot run the coroutine synchronously because an event loop is already running in "
+                    "the current thread. Use `async_get_injected_obj(...)` (or `await` the coroutine) instead "
+                    "of the synchronous `get_injected_obj(...)` / `run_coroutine_sync(...)`, or switch the loop "
+                    "strategy with `loop_manager.set_loop_strategy('background_thread')`."
+                )
+                raise RuntimeError(msg) from e
 
         if asyncio.iscoroutine(awaitable):
             coro: Coroutine[Any, Any, T] = awaitable  # pragma: no cover

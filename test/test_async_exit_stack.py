@@ -210,6 +210,47 @@ async def test_cleanup_all_stacks_with_empty_stacks(mock_loop_manager: Mock, man
     mock_loop_manager.in_loop.assert_not_called()
 
 
+@patch(
+    "fastapi_injectable.async_exit_stack.loop_manager",
+    new_callable=create_mocked_loop_manager,
+)
+async def test_cleanup_stack_runtime_error_names_func_not_loop(
+    mock_loop_manager: Mock, manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
+) -> None:
+    """A RuntimeError raised during teardown is reported against the func, not blamed on the loop."""
+    mock_stack.aclose.side_effect = RuntimeError("teardown boom")
+    manager._stacks[mock_func] = mock_stack
+
+    with pytest.raises(Exception, match="teardown boom") as exc_info:
+        await manager.cleanup_stack(mock_func, raise_exception=True)
+
+    assert isinstance(exc_info.value, DependencyCleanupError)
+    message = str(exc_info.value)
+    assert "mock_func" in message
+    assert "something wrong with the loop" not in message
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
+@patch(
+    "fastapi_injectable.async_exit_stack.loop_manager",
+    new_callable=create_mocked_loop_manager,
+)
+async def test_cleanup_all_stacks_runtime_error_names_error_not_loop(
+    mock_loop_manager: Mock, manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
+) -> None:
+    """A RuntimeError during teardown of all stacks reports the underlying error, not the loop."""
+    mock_stack.aclose.side_effect = RuntimeError("teardown boom")
+    manager._stacks[mock_func] = mock_stack
+
+    with pytest.raises(Exception, match="teardown boom") as exc_info:
+        await manager.cleanup_all_stacks(raise_exception=True)
+
+    assert isinstance(exc_info.value, DependencyCleanupError)
+    message = str(exc_info.value)
+    assert "something wrong with the loop" not in message
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+
+
 async def test_concurrent_get_stack_access(manager: AsyncExitStackManager, mock_func: Mock) -> None:
     tasks = [manager.get_stack(mock_func) for _ in range(5)]
     stacks = await asyncio.gather(*tasks)

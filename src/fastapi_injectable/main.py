@@ -135,14 +135,28 @@ async def resolve_dependencies(
         cache = scope.get_cache() if use_cache else None
     else:
         cache = dependency_cache.get() if use_cache else None
-    solved_dependency = await solve_dependencies(
-        request=fake_request,
-        dependant=root_dep,
-        async_exit_stack=async_exit_stack,
-        embed_body_fields=False,
-        dependency_cache=cache,
-        dependency_overrides_provider=app,
-    )
+    try:
+        solved_dependency = await solve_dependencies(
+            request=fake_request,
+            dependant=root_dep,
+            async_exit_stack=async_exit_stack,
+            embed_body_fields=False,
+            dependency_cache=cache,
+            dependency_overrides_provider=app,
+        )
+    except KeyError as e:
+        # Starlette raises a bare ``KeyError: 'app'`` when a dependency reads
+        # ``request.app`` but no app has been registered. Surface an actionable
+        # message instead of an opaque KeyError from deep in starlette.
+        if app is None and e.args == ("app",):
+            msg = (
+                "No FastAPI app is registered, but a dependency tried to access `request.app`. "
+                "Call `await register_app(app)` (or `run_coroutine_sync(register_app(app))` in sync code) "
+                "before resolving dependencies that use `request.app`. If you already called "
+                "register_app(), make sure the coroutine was awaited."
+            )
+            raise RuntimeError(msg) from e
+        raise
     if cache is not None:
         cache.update(solved_dependency.dependency_cache)
 
