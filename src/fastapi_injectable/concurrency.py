@@ -22,14 +22,20 @@ class LoopManager:
 
     def _get_background_loop(self) -> asyncio.AbstractEventLoop:
         """Get the dedicated background loop, starting it if necessary."""
+        # Fast path: ``_background_loop`` is only ever assigned once (guarded by the
+        # re-check below), so once it is non-None it is safe to read without the lock.
         if self._background_loop is not None:
             return self._background_loop
         with self._lock:
-            self._background_loop = asyncio.new_event_loop()
-            self._background_loop_thread = threading.Thread(
-                target=self._run_background_loop, daemon=True, name="fastapi-injectable-daemon-thread"
-            )
-            self._background_loop_thread.start()
+            # Re-check inside the lock: another thread may have created the loop while
+            # we waited. Without this, concurrent first-use spawns and leaks extra
+            # loops and daemon threads.
+            if self._background_loop is None:
+                self._background_loop = asyncio.new_event_loop()
+                self._background_loop_thread = threading.Thread(
+                    target=self._run_background_loop, daemon=True, name="fastapi-injectable-daemon-thread"
+                )
+                self._background_loop_thread.start()
         return self._background_loop
 
     def _run_background_loop(self) -> None:  # pragma: no cover
@@ -44,10 +50,15 @@ class LoopManager:
 
     def _get_isolated_loop(self) -> asyncio.AbstractEventLoop:
         """Get the isolated loop, creating it if necessary."""
+        # Fast path: ``_isolated_loop`` is only ever assigned once (guarded by the
+        # re-check below), so once it is non-None it is safe to read without the lock.
         if self._isolated_loop is not None:
             return self._isolated_loop
         with self._lock:
-            self._isolated_loop = asyncio.get_event_loop_policy().new_event_loop()
+            # Re-check inside the lock: another thread may have created the loop while
+            # we waited. Without this, concurrent first-use spawns and leaks extra loops.
+            if self._isolated_loop is None:
+                self._isolated_loop = asyncio.get_event_loop_policy().new_event_loop()
         return self._isolated_loop
 
     def _get_or_create_current_loop(self) -> asyncio.AbstractEventLoop:
