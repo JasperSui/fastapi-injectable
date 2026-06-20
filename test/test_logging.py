@@ -4,18 +4,19 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from src.fastapi_injectable.logging import configure_logging, logger
+from fastapi_injectable import configure_logging
+from fastapi_injectable.logging import logger
 
 
 @pytest.fixture
 def mock_logger() -> Generator[Mock, None, None]:
-    with patch("src.fastapi_injectable.logging.logger") as mock:
+    with patch("fastapi_injectable.logging.logger") as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_formatter() -> Generator[Mock, None, None]:
-    with patch("src.fastapi_injectable.logging.logging.Formatter") as mock:
+    with patch("fastapi_injectable.logging.logging.Formatter") as mock:
         yield mock
 
 
@@ -69,7 +70,7 @@ def test_configure_logging_handler_already_exists(mock_logger: Mock) -> None:
     mock_logger.handlers = [handler]
 
     # When handlers are compared, they should match
-    with patch("src.fastapi_injectable.logging.logging.StreamHandler") as mock_stream_handler:
+    with patch("fastapi_injectable.logging.logging.StreamHandler") as mock_stream_handler:
         mock_stream_handler.return_value = handler
         configure_logging()
 
