@@ -635,6 +635,45 @@ This is particularly useful when:
 - You're using third-party libraries that call your code internally
 - You want to maintain a single source of truth for long-running services
 
+### Test Isolation
+
+`fastapi-injectable` keeps its dependency cache and exit stacks in **process-global** singletons, so a value cached — or a generator left open — by one test can leak into the next. To make "tests are isolated" the default, the package ships a pytest plugin that resets both around every test.
+
+The plugin is registered automatically when you install `fastapi-injectable` (via a `pytest11` entry point) — there's nothing to import or enable. By default it resets the global dependency cache and exit stacks around **every** test, so leakage simply can't happen:
+
+```python
+from fastapi_injectable import get_injected_obj
+
+def test_a() -> None:
+    service = get_injected_obj(get_service)  # populates the process-global cache
+    ...
+
+def test_b() -> None:
+    # Starts from a clean slate — nothing from test_a leaks in.
+    service = get_injected_obj(get_service)
+```
+
+Prefer to manage isolation yourself? Turn the autouse behaviour off in your pytest config and request the `injectable_cleanup` fixture only where you need it:
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+injectable_autouse_cleanup = false
+```
+
+```python
+import pytest
+
+# Reset around a single test:
+def test_one(injectable_cleanup: None) -> None:
+    ...
+
+# ...or for a whole module:
+pytestmark = pytest.mark.usefixtures("injectable_cleanup")
+```
+
+Both the autouse reset and the `injectable_cleanup` fixture work in sync and async tests alike, and honour whatever loop strategy you've configured via `loop_manager`.
+
 <!-- usage-end -->
 
 ## Advanced Scenarios
