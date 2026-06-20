@@ -230,6 +230,18 @@ sys.exit(0)
 """
 
 
+# These end-to-end tests rely on POSIX signal-delivery semantics. On Windows,
+# os.kill() calls TerminateProcess() for SIGTERM/SIGINT, hard-killing the process
+# with the signal number as exit code without ever invoking the Python handler, so
+# they cannot exercise our handler there. The in-process handler tests above cover
+# the same logic (and all of its lines) on every platform.
+_skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX signal-delivery semantics; os.kill() hard-terminates on Windows without running the handler",
+)
+
+
+@_skip_on_windows
 def test_setup_graceful_shutdown_terminates_process_on_sigterm() -> None:
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", _TERMINATION_SCRIPT.format(signal_name="SIGTERM")],
@@ -243,6 +255,7 @@ def test_setup_graceful_shutdown_terminates_process_on_sigterm() -> None:
     assert result.returncode == 0  # SystemExit(0) on SIGTERM
 
 
+@_skip_on_windows
 def test_setup_graceful_shutdown_terminates_process_on_sigint() -> None:
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", _TERMINATION_SCRIPT.format(signal_name="SIGINT")],
