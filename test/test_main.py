@@ -247,3 +247,45 @@ async def test_resolve_dependencies_with_provided_kwargs(
     assert dependencies == {dependency_param_name: provided_dep}
     assert mock_get_dependant.return_value.dependencies == []
     mock_solve_dependencies.assert_awaited_once()
+
+
+async def test_resolve_dependencies_missing_app_raises_helpful_error(
+    mock_solve_dependencies: AsyncMock,
+    mock_get_dependant: Mock,
+    mock_dependency_cache: Mock,
+    mock_async_exit_stack_manager: Mock,
+) -> None:
+    """A bare KeyError('app') from starlette is re-raised with guidance to call register_app()."""
+    mock_get_dependant.return_value.dependencies = []
+    mock_solve_dependencies.side_effect = KeyError("app")
+
+    def func() -> None:
+        return None
+
+    with (
+        patch("src.fastapi_injectable.main._get_app", return_value=None),
+        pytest.raises(RuntimeError, match="register_app") as exc_info,
+    ):
+        await resolve_dependencies(func)
+
+    assert isinstance(exc_info.value.__cause__, KeyError)
+
+
+async def test_resolve_dependencies_unrelated_keyerror_propagates(
+    mock_solve_dependencies: AsyncMock,
+    mock_get_dependant: Mock,
+    mock_dependency_cache: Mock,
+    mock_async_exit_stack_manager: Mock,
+) -> None:
+    """A KeyError that is not the missing-app footgun is propagated unchanged."""
+    mock_get_dependant.return_value.dependencies = []
+    mock_solve_dependencies.side_effect = KeyError("something_else")
+
+    def func() -> None:
+        return None
+
+    with (
+        patch("src.fastapi_injectable.main._get_app", return_value=None),
+        pytest.raises(KeyError, match="something_else"),
+    ):
+        await resolve_dependencies(func)

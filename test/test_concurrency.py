@@ -1,5 +1,8 @@
 import asyncio
 import concurrent.futures
+import inspect
+import threading
+import time
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -356,3 +359,210 @@ def test_run_coroutine_sync_success() -> None:
         return "test"
 
     assert run_coroutine_sync(coro()) == "test"
+
+
+# --- Scope #3: double-checked locking in isolated/background loop creation ---
+
+
+def test_get_isolated_loop_concurrent_first_use_creates_single_loop(loop_manager_instance: LoopManager) -> None:
+    """Concurrent first-use of the isolated strategy must create exactly one event loop.
+
+    Regression test for broken double-checked locking: previously the in-lock branch
+    never re-checked the field, so racing threads each created (and leaked) a loop.
+    """
+    n = 32
+    barrier = threading.Barrier(n)
+    results: list[Any] = []
+    results_lock = threading.Lock()
+    created_loops: list[Any] = []
+    created_loops_lock = threading.Lock()
+
+    def fake_new_event_loop() -> Mock:
+        # Widen the race window so the unguarded creation reliably reproduces the bug.
+        time.sleep(0.01)
+        loop = Mock(name="isolated_loop")
+        with created_loops_lock:
+            created_loops.append(loop)
+        return loop
+
+    mock_policy = Mock()
+    mock_policy.new_event_loop.side_effect = fake_new_event_loop
+
+    def worker() -> None:
+        barrier.wait()
+        loop = loop_manager_instance._get_isolated_loop()
+        with results_lock:
+            results.append(loop)
+
+    with patch("src.fastapi_injectable.concurrency.asyncio.get_event_loop_policy", return_value=mock_policy):
+        workers = [threading.Thread(target=worker) for _ in range(n)]
+        for worker_thread in workers:
+            worker_thread.start()
+        for worker_thread in workers:
+            worker_thread.join()
+
+    assert len(results) == n
+    assert len({id(loop) for loop in results}) == 1  # every thread observed the same loop
+    assert len(created_loops) == 1  # exactly one loop created, nothing leaked
+    assert loop_manager_instance._isolated_loop is created_loops[0]
+
+
+def test_get_background_loop_concurrent_first_use_creates_single_loop_and_thread(
+    loop_manager_instance: LoopManager,
+) -> None:
+    """Concurrent first-use of the background_thread strategy must create exactly one loop and one daemon thread."""
+    n = 32
+    barrier = threading.Barrier(n)
+    results: list[Any] = []
+    results_lock = threading.Lock()
+    created_loops: list[Any] = []
+    created_loops_lock = threading.Lock()
+    created_threads: list[tuple[Any, Any]] = []
+    created_threads_lock = threading.Lock()
+    real_thread_cls = threading.Thread  # captured before patching threading.Thread
+
+    def fake_new_event_loop() -> Mock:
+        time.sleep(0.01)
+        loop = Mock(name="background_loop")
+        with created_loops_lock:
+            created_loops.append(loop)
+        return loop
+
+    def fake_thread(*args: object, **kwargs: object) -> Mock:
+        with created_threads_lock:
+            created_threads.append((args, kwargs))
+        return Mock(name="daemon_thread")
+
+    def worker() -> None:
+        barrier.wait()
+        loop = loop_manager_instance._get_background_loop()
+        with results_lock:
+            results.append(loop)
+
+    with (
+        patch("src.fastapi_injectable.concurrency.asyncio.new_event_loop", side_effect=fake_new_event_loop),
+        patch("src.fastapi_injectable.concurrency.threading.Thread", side_effect=fake_thread),
+    ):
+        workers = [real_thread_cls(target=worker) for _ in range(n)]
+        for worker_thread in workers:
+            worker_thread.start()
+        for worker_thread in workers:
+            worker_thread.join()
+
+    assert len(results) == n
+    assert len({id(loop) for loop in results}) == 1
+    assert len(created_loops) == 1
+    assert len(created_threads) == 1
+    assert created_threads[0][1]["name"] == "fastapi-injectable-daemon-thread"
+    assert created_threads[0][1]["daemon"] is True
+    assert loop_manager_instance._background_loop is created_loops[0]
+
+
+def test_get_isolated_loop_rechecks_existing_loop_inside_lock(loop_manager_instance: LoopManager) -> None:
+    """If another thread populated the isolated loop while we waited for the lock, reuse it."""
+    sentinel_loop = Mock(name="sentinel_isolated_loop")
+    real_lock = threading.Lock()
+
+    class _SettingLock:
+        def __enter__(self) -> "_SettingLock":
+            real_lock.acquire()
+            # Simulate a concurrent creator that won the race while we waited for the lock.
+            loop_manager_instance._isolated_loop = sentinel_loop
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            real_lock.release()
+
+    loop_manager_instance._lock = _SettingLock()  # type: ignore[assignment]
+    mock_policy = Mock()
+
+    with patch("src.fastapi_injectable.concurrency.asyncio.get_event_loop_policy", return_value=mock_policy):
+        result = loop_manager_instance._get_isolated_loop()
+
+    assert result is sentinel_loop
+    mock_policy.new_event_loop.assert_not_called()
+
+
+def test_get_background_loop_rechecks_existing_loop_inside_lock(loop_manager_instance: LoopManager) -> None:
+    """If another thread populated the background loop while we waited for the lock, reuse it (no second thread)."""
+    sentinel_loop = Mock(name="sentinel_background_loop")
+    real_lock = threading.Lock()
+
+    class _SettingLock:
+        def __enter__(self) -> "_SettingLock":
+            real_lock.acquire()
+            loop_manager_instance._background_loop = sentinel_loop
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            real_lock.release()
+
+    loop_manager_instance._lock = _SettingLock()  # type: ignore[assignment]
+
+    with (
+        patch("src.fastapi_injectable.concurrency.asyncio.new_event_loop") as mock_new_event_loop,
+        patch("src.fastapi_injectable.concurrency.threading.Thread") as mock_thread,
+    ):
+        result = loop_manager_instance._get_background_loop()
+
+    assert result is sentinel_loop
+    mock_new_event_loop.assert_not_called()
+    mock_thread.assert_not_called()
+
+
+# --- Scope #5A: set_loop_strategy validates the strategy name ---
+
+
+def test_set_loop_strategy_rejects_unknown_strategy(loop_manager_instance: LoopManager) -> None:
+    """An unknown strategy name must raise ValueError instead of silently using background_thread."""
+    with pytest.raises(ValueError, match="Unknown loop strategy"):
+        loop_manager_instance.set_loop_strategy("isolted")  # type: ignore[arg-type]
+
+    # A rejected set must not change the configured strategy.
+    assert loop_manager_instance.loop_strategy == "current"
+
+
+# --- Scope #5C: run_in_loop redirects the 'event loop is already running' error ---
+
+
+def test_run_in_loop_already_running_raises_helpful_error(loop_manager_instance: LoopManager) -> None:
+    """A 'loop already running' RuntimeError is re-raised pointing the user to async_get_injected_obj()."""
+    mock_loop = Mock()
+    mock_loop.run_until_complete.side_effect = RuntimeError("This event loop is already running")
+
+    async def coro() -> None:
+        return None
+
+    dropped = coro()
+    with patch.object(loop_manager_instance, "get_loop", return_value=mock_loop):
+        loop_manager_instance.set_loop_strategy("current")
+        with pytest.raises(RuntimeError, match="async_get_injected_obj") as exc_info:
+            loop_manager_instance.run_in_loop(dropped)
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    # The dropped coroutine is closed so Python does not also emit a "never awaited" warning.
+    assert inspect.getcoroutinestate(dropped) == inspect.CORO_CLOSED
+
+
+def test_run_in_loop_other_runtime_error_propagates(loop_manager_instance: LoopManager) -> None:
+    """A RuntimeError unrelated to an already-running loop is propagated unchanged."""
+    mock_loop = Mock()
+    mock_loop.run_until_complete.side_effect = RuntimeError("some other failure")
+    mock_coro = AsyncMock()
+
+    with patch.object(loop_manager_instance, "get_loop", return_value=mock_loop):
+        loop_manager_instance.set_loop_strategy("current")
+        with pytest.raises(RuntimeError, match="some other failure"):
+            loop_manager_instance.run_in_loop(mock_coro)
+
+
+def test_run_in_loop_already_running_with_non_coroutine_awaitable(loop_manager_instance: LoopManager) -> None:
+    """The already-running redirect also works for non-coroutine awaitables (nothing to close)."""
+    mock_loop = Mock()
+    mock_loop.run_until_complete.side_effect = RuntimeError("This event loop is already running")
+    awaitable = Mock(spec=asyncio.Future)
+
+    with patch.object(loop_manager_instance, "get_loop", return_value=mock_loop):
+        loop_manager_instance.set_loop_strategy("current")
+        with pytest.raises(RuntimeError, match="async_get_injected_obj"):
+            loop_manager_instance.run_in_loop(awaitable)

@@ -9,6 +9,8 @@ from .exception import RunCoroutineSyncMaxRetriesError
 
 T = TypeVar("T")
 
+_VALID_LOOP_STRATEGIES: tuple[str, ...] = ("current", "isolated", "background_thread")
+
 
 class LoopManager:
     def __init__(self) -> None:
@@ -24,14 +26,20 @@ class LoopManager:
 
     def _get_background_loop(self) -> asyncio.AbstractEventLoop:
         """Get the dedicated background loop, starting it if necessary."""
+        # Fast path: ``_background_loop`` is only ever assigned once (guarded by the
+        # re-check below), so once it is non-None it is safe to read without the lock.
         if self._background_loop is not None:
             return self._background_loop
         with self._lock:
-            self._background_loop = asyncio.new_event_loop()
-            self._background_loop_thread = threading.Thread(
-                target=self._run_background_loop, daemon=True, name="fastapi-injectable-daemon-thread"
-            )
-            self._background_loop_thread.start()
+            # Re-check inside the lock: another thread may have created the loop while
+            # we waited. Without this, concurrent first-use spawns and leaks extra
+            # loops and daemon threads.
+            if self._background_loop is None:
+                self._background_loop = asyncio.new_event_loop()
+                self._background_loop_thread = threading.Thread(
+                    target=self._run_background_loop, daemon=True, name="fastapi-injectable-daemon-thread"
+                )
+                self._background_loop_thread.start()
         return self._background_loop
 
     def _run_background_loop(self) -> None:  # pragma: no cover
@@ -46,10 +54,15 @@ class LoopManager:
 
     def _get_isolated_loop(self) -> asyncio.AbstractEventLoop:
         """Get the isolated loop, creating it if necessary."""
+        # Fast path: ``_isolated_loop`` is only ever assigned once (guarded by the
+        # re-check below), so once it is non-None it is safe to read without the lock.
         if self._isolated_loop is not None:
             return self._isolated_loop
         with self._lock:
-            self._isolated_loop = asyncio.get_event_loop_policy().new_event_loop()
+            # Re-check inside the lock: another thread may have created the loop while
+            # we waited. Without this, concurrent first-use spawns and leaks extra loops.
+            if self._isolated_loop is None:
+                self._isolated_loop = asyncio.get_event_loop_policy().new_event_loop()
         return self._isolated_loop
 
     def _get_or_create_current_loop(self) -> asyncio.AbstractEventLoop:
@@ -72,7 +85,18 @@ class LoopManager:
         return self._loop_strategy
 
     def set_loop_strategy(self, strategy: Literal["current", "isolated", "background_thread"]) -> None:
-        """Set the current setting for whether to use the current loop."""
+        """Set the strategy used to obtain the event loop for running coroutines.
+
+        Args:
+            strategy: One of ``"current"``, ``"isolated"`` or ``"background_thread"``.
+
+        Raises:
+            ValueError: If ``strategy`` is not one of the supported values.
+        """
+        if strategy not in _VALID_LOOP_STRATEGIES:
+            allowed = ", ".join(repr(s) for s in _VALID_LOOP_STRATEGIES)
+            msg = f"Unknown loop strategy {strategy!r}; expected one of {allowed}."
+            raise ValueError(msg)
         with self._lock:
             self._loop_strategy = strategy
 
@@ -133,7 +157,22 @@ class LoopManager:
         loop = self.get_loop()
 
         if self._loop_strategy in {"current", "isolated"}:
-            return loop.run_until_complete(awaitable)
+            try:
+                return loop.run_until_complete(awaitable)
+            except RuntimeError as e:
+                if "already running" not in str(e):
+                    raise
+                # Close the dropped coroutine so Python does not also emit a noisy
+                # "coroutine was never awaited" RuntimeWarning on top of our error.
+                if asyncio.iscoroutine(awaitable):
+                    awaitable.close()
+                msg = (
+                    "Cannot run the coroutine synchronously because an event loop is already running in "
+                    "the current thread. Use `async_get_injected_obj(...)` (or `await` the coroutine) instead "
+                    "of the synchronous `get_injected_obj(...)` / `run_coroutine_sync(...)`, or switch the loop "
+                    "strategy with `loop_manager.set_loop_strategy('background_thread')`."
+                )
+                raise RuntimeError(msg) from e
 
         if asyncio.iscoroutine(awaitable):
             coro: Coroutine[Any, Any, T] = awaitable  # pragma: no cover
