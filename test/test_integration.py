@@ -1329,7 +1329,7 @@ def test_async_get_injected_obj_cache_is_isolated_per_event_loop() -> None:
         async def request(self) -> int:
             # Drive work through the creation loop. If this instance is reused on
             # a different loop, awaiting this future never completes there.
-            fut = self._loop.create_future()
+            fut: asyncio.Future[int] = self._loop.create_future()
             self._loop.call_soon(fut.set_result, 1)
             return await fut
 
