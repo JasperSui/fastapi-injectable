@@ -1,11 +1,14 @@
 from contextlib import AsyncExitStack
+from typing import Any
 from unittest.mock import Mock
+from weakref import WeakKeyDictionary
 
 import pytest
 
 from src.fastapi_injectable import pytest_plugin
 from src.fastapi_injectable.async_exit_stack import async_exit_stack_manager
 from src.fastapi_injectable.cache import dependency_cache
+from src.fastapi_injectable.concurrency import loop_manager
 
 
 def test_reset_injectable_state_clears_cache_and_stacks() -> None:
@@ -13,7 +16,10 @@ def test_reset_injectable_state_clears_cache_and_stacks() -> None:
         """A stand-in provider key for the exit-stack manager."""
 
     dependency_cache.get()[("leaked",)] = object()
-    async_exit_stack_manager._stacks[marker] = AsyncExitStack()
+    # Seed the per-loop registry under the loop reset() will run cleanup on.
+    per_loop: WeakKeyDictionary[Any, Any] = WeakKeyDictionary()
+    per_loop[marker] = AsyncExitStack()
+    async_exit_stack_manager._stacks[loop_manager.get_loop()] = per_loop
     assert dependency_cache.get()
     assert async_exit_stack_manager._stacks
 
