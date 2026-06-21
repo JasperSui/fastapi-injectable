@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import concurrent.futures
+import contextvars
 import threading
 from collections.abc import Awaitable, Coroutine
 from typing import Any, Literal, TypeVar
@@ -10,6 +11,17 @@ from .exception import RunCoroutineSyncMaxRetriesError
 T = TypeVar("T")
 
 _VALID_LOOP_STRATEGIES: tuple[str, ...] = ("current", "isolated", "background_thread")
+
+# True while ``loop_manager`` is driving a coroutine synchronously via
+# ``run_until_complete`` (i.e. ``get_injected_obj`` / ``run_coroutine_sync``). Those calls
+# run on a transient/policy event loop that can differ from one call to the next, so the
+# dependency cache reads this flag and shares ONE cache across them -- preserving
+# cross-call caching for the synchronous API -- instead of partitioning per loop the way it
+# must for genuine async callers (an already-running, persistent loop). See
+# ``cache.DependencyCache`` and https://github.com/JasperSui/fastapi-injectable/issues/186.
+resolving_synchronously: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "fastapi_injectable_resolving_synchronously", default=False
+)
 
 
 class LoopManager:
@@ -157,6 +169,10 @@ class LoopManager:
         loop = self.get_loop()
 
         if self._loop_strategy in {"current", "isolated"}:
+            # Mark this as a synchronous resolution so the dependency cache shares one cache
+            # across the transient loops these calls run on. ``run_until_complete`` creates a
+            # Task that copies the current context, so the flag is visible inside the coroutine.
+            token = resolving_synchronously.set(True)
             try:
                 return loop.run_until_complete(awaitable)
             except RuntimeError as e:
@@ -173,6 +189,8 @@ class LoopManager:
                     "strategy with `loop_manager.set_loop_strategy('background_thread')`."
                 )
                 raise RuntimeError(msg) from e
+            finally:
+                resolving_synchronously.reset(token)
 
         if asyncio.iscoroutine(awaitable):
             coro: Coroutine[Any, Any, T] = awaitable  # pragma: no cover
