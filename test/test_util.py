@@ -57,7 +57,7 @@ async def test_cleanup_exit_stack_of_func(mock_async_exit_stack_manager: Mock) -
         return None
 
     await cleanup_exit_stack_of_func(func)
-    mock_async_exit_stack_manager.cleanup_stack.assert_awaited_once_with(func, raise_exception=False)
+    mock_async_exit_stack_manager.cleanup_stack.assert_awaited_once_with(func, raise_exception=False, exc=None)
 
 
 async def test_cleanup_all_exit_stacks(mock_async_exit_stack_manager: Mock) -> None:

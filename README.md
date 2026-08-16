@@ -407,6 +407,49 @@ run_coroutine_sync(cleanup_all_exit_stacks()) # accepts raise_exception=True too
 assert machine.db.closed is True
 ```
 
+#### Unwinding with an in-flight exception (rollback on error)
+
+In a FastAPI request, when your endpoint raises, generator dependencies receive the exception at their `yield` — so `except` branches (e.g. `rollback()`) run before `finally`. Outside a request you get the same behavior by passing the caught exception to the cleanup helpers via `exc=`, or by using `injectable_scope()`, which forwards it automatically:
+
+```python
+from collections.abc import AsyncGenerator
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi_injectable import cleanup_all_exit_stacks, injectable, injectable_scope
+
+async def get_connection() -> AsyncGenerator[Connection, None]:
+    conn = Connection()
+    try:
+        yield conn
+    except Exception:
+        conn.rollback()  # runs when the decorated function raised
+        raise
+    else:
+        conn.commit()
+    finally:
+        conn.close()
+
+@injectable
+async def process(conn: Annotated[Connection, Depends(get_connection)]) -> None:
+    raise ValueError("boom")
+
+# Option #1: pass the exception to the cleanup helpers explicitly
+try:
+    await process()
+except ValueError as exc:
+    # conn.rollback() and conn.close() run; without exc= only conn.commit()/close() would
+    await cleanup_all_exit_stacks(exc=exc)
+    # cleanup_exit_stack_of_func(process, exc=exc) also accepts it
+
+# Option #2: injectable_scope() forwards the exception automatically,
+# exactly like a failing FastAPI request unwinding its exit stack
+async with injectable_scope():
+    await process()  # raises -> conn.rollback() + conn.close() run during unwind
+```
+
+Just like in FastAPI, teardown that must **always** run belongs in `finally`: when an exception is delivered to the generator, code placed after a bare `yield` (with no `try`/`finally`) is skipped.
+
 ### Async Support
 
 `fastapi-injectable` provides full support for both synchronous and asynchronous dependencies, allowing you to mix and match them as needed. You can freely use async dependencies in sync functions and vice versa. For cases where you need to run async code in a synchronous context, we provide the `run_coroutine_sync` utility function.

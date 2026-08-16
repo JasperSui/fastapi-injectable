@@ -83,13 +83,27 @@ class LoopManager:
         Compatible with Python 3.12+ and 3.14+. Attempts to get loop via policy,
         falls back to creating new loop if RuntimeError is raised.
 
+        A newly created loop is registered as the thread's current loop
+        (``set_event_loop``) so that consecutive synchronous calls keep landing on
+        the SAME loop. Without this, each call would run on a fresh throwaway loop:
+        dependencies would be resolved on loop A while their cleanup ran on loop B,
+        and the per-loop exit-stack registry (see ``AsyncExitStackManager``) would
+        rightly refuse to close A's stacks from B -- silently skipping generator
+        teardown. This mirrors the pre-3.12 auto-create semantics of
+        ``asyncio.get_event_loop()``.
+
         Returns:
             Event loop instance.
         """
+        policy = asyncio.get_event_loop_policy()
         try:
-            return asyncio.get_event_loop_policy().get_event_loop()
+            loop = policy.get_event_loop()
         except RuntimeError:
-            return asyncio.get_event_loop_policy().new_event_loop()
+            loop = None
+        if loop is None or loop.is_closed():
+            loop = policy.new_event_loop()
+            asyncio.set_event_loop(loop)
+        return loop
 
     @property
     def loop_strategy(self) -> Literal["current", "isolated", "background_thread"]:

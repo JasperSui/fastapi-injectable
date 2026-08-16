@@ -186,6 +186,84 @@ async def test_cleanup_all_stacks_with_empty_stacks(manager: AsyncExitStackManag
     assert len(manager._stacks) == 0
 
 
+def _make_exc() -> ValueError:
+    try:
+        msg = "boom"
+        raise ValueError(msg)  # noqa: TRY301
+    except ValueError as e:
+        return e
+
+
+async def test_cleanup_stack_with_exc_unwinds_with_exception_details(
+    manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
+) -> None:
+    """With ``exc``, the stack exits via __aexit__(type, exc, tb) instead of aclose()."""
+    _register(manager, mock_func, mock_stack)
+    exc = _make_exc()
+
+    await manager.cleanup_stack(mock_func, exc=exc)
+
+    mock_stack.__aexit__.assert_awaited_once_with(ValueError, exc, exc.__traceback__)
+    mock_stack.aclose.assert_not_awaited()
+    assert not _contains(manager, mock_func)
+
+
+async def test_cleanup_all_stacks_with_exc_unwinds_with_exception_details(
+    manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
+) -> None:
+    """cleanup_all_stacks(exc=...) unwinds every stack with the exception details."""
+    other_func = Mock()
+    other_func.__name__ = "other_func"
+    other_stack = AsyncMock(spec=AsyncExitStack)
+    _register(manager, mock_func, mock_stack)
+    _register(manager, other_func, other_stack)
+    exc = _make_exc()
+
+    await manager.cleanup_all_stacks(exc=exc)
+
+    mock_stack.__aexit__.assert_awaited_once_with(ValueError, exc, exc.__traceback__)
+    other_stack.__aexit__.assert_awaited_once_with(ValueError, exc, exc.__traceback__)
+    mock_stack.aclose.assert_not_awaited()
+    other_stack.aclose.assert_not_awaited()
+    assert len(manager._stacks) == 0
+
+
+async def test_cleanup_with_exc_swallows_reraised_in_flight_exception(
+    manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
+) -> None:
+    """A dependency re-raising the in-flight exception is CM protocol, not a cleanup failure.
+
+    AsyncExitStack.__aexit__ re-raises the passed-in exception when a generator's
+    ``except: ...; raise`` branch doesn't suppress it. The caller already handled that
+    exception, so cleanup must not report it as a DependencyCleanupError.
+    """
+    exc = _make_exc()
+    tb = exc.__traceback__  # re-raising below appends frames to exc.__traceback__
+    mock_stack.__aexit__.side_effect = exc
+    _register(manager, mock_func, mock_stack)
+
+    await manager.cleanup_stack(mock_func, raise_exception=True, exc=exc)
+
+    mock_stack.__aexit__.assert_awaited_once_with(ValueError, exc, tb)
+    assert not _contains(manager, mock_func)
+
+
+async def test_cleanup_with_exc_still_raises_on_distinct_teardown_failure(
+    manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
+) -> None:
+    """A teardown failure distinct from the in-flight exception still surfaces."""
+    exc = _make_exc()
+    mock_stack.__aexit__.side_effect = RuntimeError("teardown boom")
+    _register(manager, mock_func, mock_stack)
+
+    with pytest.raises(Exception, match="Failed to cleanup stack for mock_func") as exc_info:
+        await manager.cleanup_stack(mock_func, raise_exception=True, exc=exc)
+
+    assert isinstance(exc_info.value, DependencyCleanupError)
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert not _contains(manager, mock_func)
+
+
 async def test_cleanup_stack_runtime_error_names_func_not_loop(
     manager: AsyncExitStackManager, mock_func: Mock, mock_stack: AsyncMock
 ) -> None:

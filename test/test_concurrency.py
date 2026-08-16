@@ -58,6 +58,7 @@ def test_get_loop_current_strategy(mock_get_running_loop: Mock, loop_manager_ins
 def test_get_loop_current_strategy_fallback(loop_manager_instance: LoopManager) -> None:
     """Test get_loop with 'current' strategy when no running loop exists (Python 3.14+ compatibility)."""
     mock_loop = Mock()
+    mock_loop.is_closed.return_value = False
     mock_policy = Mock()
     mock_policy.get_event_loop.return_value = mock_loop
 
@@ -83,12 +84,16 @@ def test_get_loop_current_strategy_fallback_create_new(loop_manager_instance: Lo
     with (
         patch("src.fastapi_injectable.concurrency.asyncio.get_running_loop", side_effect=RuntimeError),
         patch("src.fastapi_injectable.concurrency.asyncio.get_event_loop_policy", return_value=mock_policy),
+        patch("src.fastapi_injectable.concurrency.asyncio.set_event_loop") as mock_set_event_loop,
     ):
         loop_manager_instance.set_loop_strategy("current")
 
         result = loop_manager_instance.get_loop()
 
         assert result == mock_loop
+        # The freshly created loop is registered as the thread's current loop so that
+        # subsequent synchronous calls (resolution + cleanup) land on the SAME loop.
+        mock_set_event_loop.assert_called_once_with(mock_loop)
         mock_policy.get_event_loop.assert_called_once()
         mock_policy.new_event_loop.assert_called_once()
 

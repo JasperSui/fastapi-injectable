@@ -31,6 +31,12 @@ class InjectableScope:
     cached values into this scope's cache. Leaving the scope closes the exit
     stack (running all cleanup) and drops the cache.
 
+    When an exception propagates out of the ``async with`` block, it is forwarded
+    to the exit stack -- generator dependencies receive it at their ``yield`` and
+    can run their ``except``/rollback branches, exactly as FastAPI unwinds a
+    failing request (issue #255). As in FastAPI, teardown that must always run
+    belongs in a ``finally`` block.
+
     The cache is partitioned by event loop. A scope object reused across event
     loops -- resolved on loop A then on loop B while both are alive -- must never
     serve a loop-A resource to loop B: a cached value commonly holds a loop-bound
