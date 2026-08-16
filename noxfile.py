@@ -12,12 +12,12 @@ python_versions = ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 python_versions_without_free_threaded = [version for version in python_versions if not version.endswith("t")]
 latest_python_version = python_versions_without_free_threaded[-1]
 nox.needs_version = ">= 2025.05.01"
-nox.options.sessions = (
+nox.options.sessions = [
     "pre-commit",
     "mypy",
     "tests",
     "docs-build",
-)
+]
 nox.options.default_venv_backend = "uv"
 
 
