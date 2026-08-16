@@ -170,8 +170,14 @@ async def resolve_dependencies(
     fastapi_inner_astack = AsyncExitStack()
     fastapi_function_astack = AsyncExitStack()
 
-    async_exit_stack.push_async_callback(fastapi_inner_astack.aclose)
-    async_exit_stack.push_async_callback(fastapi_function_astack.aclose)
+    # Registered via push_async_exit (NOT push_async_callback(stack.aclose)) so that
+    # when the owning stack unwinds with an exception, the exception details reach
+    # these inner stacks. On fastapi>=0.121 generator dependencies are entered into
+    # them (see the fake_request_scope note below), and an ``aclose()`` callback
+    # would strip the exception -- generators would see a bare GeneratorExit and
+    # their ``except``/rollback branches could never run (issue #255).
+    async_exit_stack.push_async_exit(fastapi_inner_astack)
+    async_exit_stack.push_async_exit(fastapi_function_astack)
 
     fake_request_scope: dict[str, Any] = {
         "type": "http",

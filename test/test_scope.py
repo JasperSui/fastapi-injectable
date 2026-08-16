@@ -217,13 +217,25 @@ def test_public_api_exports_scope_symbols() -> None:
     assert exported_factory is injectable_scope
 
 
-async def test_exception_inside_scope_still_cleans_up() -> None:
+async def test_exception_inside_scope_still_cleans_up_and_reaches_dependency() -> None:
+    """FastAPI parity (issue #255): the in-flight exception reaches generator dependencies.
+
+    The exception is thrown into each generator at its ``yield``, so ``except``/rollback
+    branches run. Teardown that must always run belongs in ``finally`` -- the same
+    contract FastAPI documents for ``Depends`` with ``yield`` in a failing request.
+    """
     captured: dict[str, Mayor] = {}
+    seen: dict[str, BaseException] = {}
 
     async def get_mayor() -> AsyncGenerator[Mayor, None]:
         mayor = Mayor()
-        yield mayor
-        mayor.cleanup()
+        try:
+            yield mayor
+        except ValueError as exc:
+            seen["exc"] = exc
+            raise
+        finally:
+            mayor.cleanup()
 
     with pytest.raises(ValueError, match="boom"):  # noqa: PT012
         async with injectable_scope():
@@ -233,6 +245,7 @@ async def test_exception_inside_scope_still_cleans_up() -> None:
             raise ValueError(msg)
 
     assert captured["m"]._is_cleaned_up is True
+    assert isinstance(seen["exc"], ValueError)
     assert _current_scope.get() is None
 
 

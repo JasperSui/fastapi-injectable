@@ -80,7 +80,30 @@ class AsyncExitStackManager:
                 per_loop[func] = stack
             return stack
 
-    async def _close_stack(self, loop: _Loop, stack: AsyncExitStack) -> None:
+    @staticmethod
+    async def _unwind_stack(stack: AsyncExitStack, exc: BaseException | None) -> None:
+        """Unwind one stack, mirroring how a context manager would exit.
+
+        With ``exc`` the stack exits as if the exception propagated out of an
+        ``async with`` block: every teardown (generator ``except``/rollback
+        branches included) sees the original exception. Without it the stack is
+        closed normally (``aclose()``, i.e. ``__aexit__(None, None, None)``).
+        """
+        if exc is None:
+            await stack.aclose()
+            return
+        try:
+            await stack.__aexit__(type(exc), exc, exc.__traceback__)
+        except BaseException as unwind_exc:
+            # A generator dependency that re-raises the in-flight exception
+            # ("except: rollback(); raise") follows the context-manager protocol
+            # (exception not suppressed) -- AsyncExitStack.__aexit__ then re-raises
+            # it here. The caller already caught and handled ``exc``, so only
+            # genuine teardown failures (a *different* exception) propagate.
+            if unwind_exc is not exc:
+                raise
+
+    async def _close_stack(self, loop: _Loop, stack: AsyncExitStack, exc: BaseException | None = None) -> None:
         """Close one stack on its owning loop.
 
         - owning loop is the current running loop -> close it here directly;
@@ -92,19 +115,29 @@ class AsyncExitStackManager:
         """
         running = self._running_loop()
         if loop is running:
-            await stack.aclose()
+            await self._unwind_stack(stack, exc)
             return
         if loop.is_closed() or not loop.is_running():
             return
-        future = asyncio.run_coroutine_threadsafe(stack.aclose(), loop)
+        future = asyncio.run_coroutine_threadsafe(self._unwind_stack(stack, exc), loop)
         await asyncio.wrap_future(future)
 
-    async def cleanup_stack(self, func: Callable[..., Any], *, raise_exception: bool = False) -> None:
+    async def cleanup_stack(
+        self,
+        func: Callable[..., Any],
+        *,
+        raise_exception: bool = False,
+        exc: BaseException | None = None,
+    ) -> None:
         """Clean up the stack(s) associated with the given function.
 
         Args:
             func: The function whose exit stack should be cleaned up
             raise_exception: If True, raises DependencyCleanupError when cleanup fails
+            exc: The in-flight exception, if any. When provided, each stack is unwound
+                with the exception details (``__aexit__(type(exc), exc, exc.__traceback__)``)
+                exactly as if it had propagated out of an ``async with`` block, so
+                generator dependencies can run their ``except``/rollback branches.
 
         Raises:
             DependencyCleanupError: When cleanup fails and raise_exception is True
@@ -125,7 +158,7 @@ class AsyncExitStackManager:
         exception_: Exception | None = None
         msg = ""
         try:
-            await asyncio.gather(*(self._close_stack(loop, stack) for loop, stack in entries))
+            await asyncio.gather(*(self._close_stack(loop, stack, exc) for loop, stack in entries))
         except RuntimeError as e:
             msg = f"Failed to cleanup stack for {func.__name__} during teardown: {e}"
             logger.warning(msg)
@@ -138,11 +171,15 @@ class AsyncExitStackManager:
         if exception_ is not None and raise_exception:
             raise DependencyCleanupError(msg) from exception_
 
-    async def cleanup_all_stacks(self, *, raise_exception: bool = False) -> None:
+    async def cleanup_all_stacks(self, *, raise_exception: bool = False, exc: BaseException | None = None) -> None:
         """Clean up all stacks, each on its own owning loop.
 
         Args:
             raise_exception: If True, raises DependencyCleanupError when any cleanup fails
+            exc: The in-flight exception, if any. When provided, every stack is unwound
+                with the exception details (``__aexit__(type(exc), exc, exc.__traceback__)``)
+                exactly as if it had propagated out of an ``async with`` block, so
+                generator dependencies can run their ``except``/rollback branches.
 
         Raises:
             DependencyCleanupError: When any cleanup fails and raise_exception is True
@@ -157,7 +194,7 @@ class AsyncExitStackManager:
         exception_: Exception | None = None
         msg = ""
         try:
-            await asyncio.gather(*(self._close_stack(loop, stack) for loop, stack in entries))
+            await asyncio.gather(*(self._close_stack(loop, stack, exc) for loop, stack in entries))
         except RuntimeError as e:
             msg = f"Failed to cleanup one or more dependency stacks during teardown: {e}"
             logger.warning(msg)

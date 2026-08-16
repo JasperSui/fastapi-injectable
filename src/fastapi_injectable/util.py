@@ -142,7 +142,7 @@ def _create_async_depends_function(
         # If it's an async generator, get the first value
         if inspect.isasyncgen(dep):
             async for value in dep:  # pragma: no cover
-                return value  # type: ignore[no-any-return]
+                return cast("T2", value)
         return dep
 
     # Nice signature for docs/inspection
@@ -446,13 +446,22 @@ async def async_get_injected_obj(
     return await coro
 
 
-async def cleanup_exit_stack_of_func(func: Callable[..., Any], *, raise_exception: bool = False) -> None:
+async def cleanup_exit_stack_of_func(
+    func: Callable[..., Any],
+    *,
+    raise_exception: bool = False,
+    exc: BaseException | None = None,
+) -> None:
     """Clean up the exit stack associated with a specific function.
 
     Args:
         func: The function whose exit stack should be cleaned up.
         raise_exception: Whether to raise exceptions during cleanup.
             If False, exceptions are logged as warnings. Defaults to False.
+        exc: The in-flight exception, if any. When provided, the exit stack is unwound
+            with the exception details -- exactly as FastAPI does when a request fails --
+            so generator dependencies see the original exception and can run their
+            ``except``/rollback branches instead of a plain close.
 
     Notes:
         - This ensures that resources such as context managers or other async cleanup routines
@@ -462,15 +471,19 @@ async def cleanup_exit_stack_of_func(func: Callable[..., Any], *, raise_exceptio
         DependencyCleanupError: When cleanup fails and raise_exception is True
     """
     for wrapper in PROVIDER_TO_WRAPPER_FUNC_MAP.get(func, [func]):
-        await async_exit_stack_manager.cleanup_stack(wrapper, raise_exception=raise_exception)
+        await async_exit_stack_manager.cleanup_stack(wrapper, raise_exception=raise_exception, exc=exc)
 
 
-async def cleanup_all_exit_stacks(*, raise_exception: bool = False) -> None:
+async def cleanup_all_exit_stacks(*, raise_exception: bool = False, exc: BaseException | None = None) -> None:
     """Clean up all active exit stacks.
 
     Args:
         raise_exception: Whether to raise exceptions during cleanup.
             If False, exceptions are logged as warnings. Defaults to False.
+        exc: The in-flight exception, if any. When provided, every exit stack is unwound
+            with the exception details -- exactly as FastAPI does when a request fails --
+            so generator dependencies see the original exception and can run their
+            ``except``/rollback branches instead of a plain close.
 
     Notes:
         - This method iterates through all registered exit stacks and ensures they are properly closed.
@@ -479,7 +492,7 @@ async def cleanup_all_exit_stacks(*, raise_exception: bool = False) -> None:
     Raises:
         DependencyCleanupError: When cleanup fails and raise_exception is True
     """
-    await async_exit_stack_manager.cleanup_all_stacks(raise_exception=raise_exception)
+    await async_exit_stack_manager.cleanup_all_stacks(raise_exception=raise_exception, exc=exc)
 
 
 async def clear_dependency_cache() -> None:
