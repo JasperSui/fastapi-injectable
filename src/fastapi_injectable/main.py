@@ -1,11 +1,13 @@
 import asyncio
 import importlib.metadata
 import inspect
+import typing
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from typing import Annotated, Any, ParamSpec, TypeVar, cast, get_args, get_origin
 
 import fastapi.params
+import typing_extensions
 from fastapi import FastAPI, Request
 from fastapi.dependencies.utils import get_dependant, solve_dependencies
 
@@ -85,11 +87,35 @@ def _get_app() -> FastAPI | None:
     return _app
 
 
+# ``typing_extensions.TypeAliasType`` is a distinct class from ``typing.TypeAliasType`` on
+# 3.12 and 3.13, so both are needed to recognise every PEP 695 alias a user can write.
+_TYPE_ALIAS_TYPES: tuple[type, ...] = tuple(
+    {
+        alias_type
+        for alias_type in (getattr(typing, "TypeAliasType", None), typing_extensions.TypeAliasType)
+        if alias_type is not None
+    }
+)
+
+
+def _unwrap_type_alias(annotation: object) -> object:
+    """Resolve PEP 695 ``type X = Annotated[...]`` aliases down to the aliased annotation.
+
+    ``typing.get_origin`` returns ``None`` for a ``TypeAliasType``, so without this the
+    ``Annotated[..., Depends(...)]`` inside the alias is invisible to ``_has_depends``.
+    FastAPI's own resolver unwraps these, which is why such aliases work in routes.
+    """
+    while isinstance(annotation, _TYPE_ALIAS_TYPES):
+        annotation = cast("typing_extensions.TypeAliasType", annotation).__value__
+    return annotation
+
+
 def _has_depends(param: inspect.Parameter) -> bool:
     """Check if a parameter has a Depends() annotation (either via Annotated metadata or as default)."""
+    annotation = _unwrap_type_alias(param.annotation)
     # Check Annotated[Type, Depends(...)] style
-    if get_origin(param.annotation) is Annotated:
-        for metadata in get_args(param.annotation)[1:]:
+    if get_origin(annotation) is Annotated:
+        for metadata in get_args(annotation)[1:]:
             if isinstance(metadata, fastapi.params.Depends):
                 return True
     # Check default=Depends(...) style

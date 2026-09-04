@@ -1,7 +1,11 @@
 # type: ignore  # noqa: PGH003
+import sys
+import typing
 from inspect import signature
 from typing import Annotated, Generic, TypeVar
 
+import pytest
+import typing_extensions
 from fastapi import Depends
 
 from src.fastapi_injectable.decorator import injectable
@@ -606,3 +610,30 @@ def test_has_depends_with_default_depends() -> None:
     sig = inspect.signature(func)
     param = next(iter(sig.parameters.values()))
     assert _has_depends(param) is True
+
+
+@pytest.mark.parametrize(
+    "type_alias_type",
+    [
+        pytest.param(typing_extensions.TypeAliasType, id="typing_extensions"),
+        pytest.param(
+            getattr(typing, "TypeAliasType", None),
+            id="typing",
+            marks=pytest.mark.skipif(sys.version_info < (3, 12), reason="PEP 695 `type` statement needs 3.12+"),
+        ),
+    ],
+)
+async def test_injectable_resolves_pep695_type_alias_dependency(type_alias_type: type) -> None:
+    async def get_mayor() -> Mayor:
+        return Mayor()
+
+    # The runtime form of ``type MayorDep = Annotated[Mayor, Depends(get_mayor)]``.
+    MayorDep = type_alias_type("MayorDep", Annotated[Mayor, Depends(get_mayor)])  # noqa: N806
+
+    @injectable
+    async def get_capital(name: str, mayor: MayorDep) -> Capital:
+        return Capital(mayor)
+
+    assert _has_depends(signature(get_capital.__wrapped__).parameters["mayor"])
+    capital = await get_capital(name="Taipei")
+    assert isinstance(capital.mayor, Mayor)
