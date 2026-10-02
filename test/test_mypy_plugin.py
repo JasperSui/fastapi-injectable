@@ -139,3 +139,103 @@ def test_parametrized_injectable_rejects_positional_dependency(tmp_path: Path) -
 
 def test_injectable_still_requires_non_dependency_arguments(tmp_path: Path) -> None:
     _assert_rejects(tmp_path, _source("injectable", _MISSING_REQUIRED_CALL), "# missing-required-arg")
+
+
+# --- #264: aliased `Annotated` spellings -------------------------------------
+#
+# `_is_fastapi_depends_annotation` compared the annotation's whole name against
+# "Annotated", but mypy spells an aliased annotation as `UnboundType(name=
+# "t.Annotated")` (mypy/fastparse.py, `visit_Attribute`). Only the bare
+# `from typing import Annotated` form was ever recognised, so an alias silently
+# kept the dependency parameter required. These pin every spelling of the
+# annotation, not just the one the bug report used.
+
+_ALIASED_PREAMBLE = (
+    "import typing\n"
+    "import typing as t\n"
+    "import typing_extensions as te\n"
+    "from typing import Annotated\n"
+    "\n"
+    "from fastapi import Depends\n"
+    "\n"
+    "from fastapi_injectable import injectable\n"
+    "\n"
+    "\n"
+    "class Capital:\n"
+    "    pass\n"
+    "\n"
+    "\n"
+    "class Country:\n"
+    "    pass\n"
+    "\n"
+    "\n"
+    "def get_capital() -> Capital:\n"
+    "    return Capital()\n"
+)
+
+
+def _aliased_source(annotation: str) -> str:
+    """Build a fixture using ``annotation`` as the dependency's spelling."""
+    return (
+        _ALIASED_PREAMBLE
+        + "\n\n"
+        + "@injectable\n"
+        + f"def make_country(name: str, capital: {annotation}) -> Country:\n"
+        + "    return Country()\n"
+        + "\n\n"
+        + _VALID_CALLS
+    )
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "Annotated[Capital, Depends(get_capital)]",  # bare import (already worked)
+        "t.Annotated[Capital, Depends(get_capital)]",  # `import typing as t`
+        "typing.Annotated[Capital, Depends(get_capital)]",  # module-qualified
+        "te.Annotated[Capital, Depends(get_capital)]",  # typing_extensions alias
+    ],
+)
+def test_every_annotated_spelling_allows_omitting_the_dependency(tmp_path: Path, annotation: str) -> None:
+    """A dependency stays omittable under every `Annotated` spelling.
+
+    The bare form is the control: it must keep working, so a pass cannot come
+    from having loosened the check to match nothing in particular.
+    """
+    _assert_clean(tmp_path, _aliased_source(annotation))
+
+
+def test_aliased_annotated_still_rejects_a_positional_dependency(tmp_path: Path) -> None:
+    """The fix widens which names match, not what matching buys the caller.
+
+    The runtime merges injected deps into kwargs, so a positional call still
+    crashes; the aliased spelling must not become a way around that.
+    """
+    source = (
+        _ALIASED_PREAMBLE
+        + "\n\n"
+        + "@injectable\n"
+        + "def make_country(name: str, capital: t.Annotated[Capital, Depends(get_capital)]) -> Country:\n"
+        + "    return Country()\n"
+        + "\n\n"
+        + _POSITIONAL_DEPENDENCY_CALL
+    )
+    _assert_rejects(tmp_path, source, "# positional-dependency")
+
+
+def test_annotated_without_a_dependency_is_left_alone(tmp_path: Path) -> None:
+    """`Annotated[X, SomethingElse]` must not become caller-optional.
+
+    The marker the plugin keys on is `Depends(...)` inside the annotation; a
+    suffix match on the *outer* name must not swallow plain `Annotated` uses.
+    """
+    source = (
+        _ALIASED_PREAMBLE
+        + "\n\n"
+        + "@injectable\n"
+        + "def make_country(name: str, capital: t.Annotated[Capital, 'metadata']) -> Country:\n"
+        + "    return Country()\n"
+        + "\n\n"
+        + "make_country('Taiwan')  # missing-required-arg\n"
+    )
+    _assert_rejects(tmp_path, source, "# missing-required-arg")
