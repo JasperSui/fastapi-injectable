@@ -147,7 +147,7 @@ async def test_nested_scopes_clean_up_in_lifo_order() -> None:
         # inner scope closed
         assert inner_mayor._is_cleaned_up is True
         assert outer_mayor._is_cleaned_up is False  # type: ignore[unreachable]
-    assert outer_mayor._is_cleaned_up is True  # type: ignore[unreachable]
+    assert outer_mayor._is_cleaned_up is True
 
 
 async def test_in_scope_cache_dedups_shared_subdependency() -> None:
