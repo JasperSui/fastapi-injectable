@@ -196,7 +196,17 @@ class FastApiInjectablePlugin(Plugin):
             return False
 
         # type_expr -> Annotated[Type, Depends(...)], type_expr.args -> (Type, None)
-        if type_expr.name != "Annotated" or len(type_expr.args) < 2:  # type: ignore[unreachable]  # noqa: PLR2004
+        #
+        # Match on the final dotted segment: an annotation written through an
+        # alias arrives as `UnboundType(name="t.Annotated")`, because mypy's
+        # `visit_Attribute` builds the name from the source text
+        # (`f"{before_dot.name}.{n.attr}"`, mypy/fastparse.py). Comparing the
+        # whole name against "Annotated" therefore missed every aliased form
+        # -- `import typing as t` or `typing.Annotated[...]` -- while the bare
+        # `from typing import Annotated` spelling kept working (#264).
+        # `Annotated` is the only segment that can appear here, so the suffix
+        # check needs no allowlist of alias spellings.
+        if type_expr.name.rpartition(".")[2] != "Annotated" or len(type_expr.args) < 2:  # type: ignore[unreachable]  # noqa: PLR2004
             return False
 
         # Suggestion: use Depends[...] instead of Depends(...) is where the magic happens
