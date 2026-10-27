@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
 import importlib.metadata
 import inspect
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
+from functools import partial
 from typing import Annotated, Any, ParamSpec, TypeVar, cast, get_args, get_origin
 
 import fastapi.params
@@ -85,6 +87,39 @@ def _get_app() -> FastAPI | None:
     return _app
 
 
+def _get_signature(func: Callable[..., Any]) -> inspect.Signature:
+    """Return ``func``'s signature with string annotations evaluated.
+
+    Under ``from __future__ import annotations`` every annotation is a string, so
+    ``Annotated[T, Depends(...)]`` is not recognisable until it is evaluated.
+
+    Related issue: https://github.com/JasperSui/fastapi-injectable/issues/268
+
+    If evaluating all annotations at once fails (e.g. a name imported only under
+    ``TYPE_CHECKING``), each parameter annotation is evaluated on its own and the
+    ones that cannot be resolved are left as strings, so the resolvable
+    ``Depends`` parameters are still found.
+    """
+    try:
+        return inspect.signature(func, eval_str=True)
+    except Exception:  # noqa: BLE001 - any error raised while evaluating an annotation string
+        sig = inspect.signature(func)
+
+    target = func
+    while isinstance(target, partial):
+        target = target.func
+    globalns = getattr(inspect.unwrap(target), "__globals__", {})
+
+    params = []
+    for param in sig.parameters.values():
+        if isinstance(param.annotation, str):
+            # Leave annotations that cannot be resolved as strings
+            with contextlib.suppress(Exception):
+                param = param.replace(annotation=eval(param.annotation, globalns))  # noqa: PLW2901, S307
+        params.append(param)
+    return sig.replace(parameters=params)
+
+
 def _has_depends(param: inspect.Parameter) -> bool:
     """Check if a parameter has a Depends() annotation (either via Annotated metadata or as default)."""
     # Check Annotated[Type, Depends(...)] style
@@ -105,7 +140,7 @@ def _build_dependency_only_callable(
     parameters (e.g. ``self``, Celery's bound ``task``) as query/body params,
     which would fail for types that are not valid Pydantic fields.
     """
-    sig = inspect.signature(func)
+    sig = _get_signature(func)
     dep_params = [p for p in sig.parameters.values() if _has_depends(p)]
 
     # If all parameters are dependencies, no filtering needed

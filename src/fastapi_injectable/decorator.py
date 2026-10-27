@@ -8,7 +8,7 @@ import fastapi
 import fastapi.params
 
 from .concurrency import run_coroutine_sync
-from .main import resolve_dependencies
+from .main import _get_signature, resolve_dependencies
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -25,7 +25,7 @@ else:
 
 def _override_func_dependency_signature(func: Callable[P, T] | Callable[P, Awaitable[T]]) -> None:  # pragma: no cover
     """Override the function signature to make dependency-injected parameters optional."""
-    signature = inspect.signature(func)
+    signature = _get_signature(func)
     new_parameters = []
     for param in signature.parameters.values():
         using_annotated_and_default_is_empty = (
