@@ -104,7 +104,7 @@ print(result) # Output: 'data'
 
 ### Requirements
 
-- Python `3.10` or higher (including `3.13t`, `3.14t` free-threaded builds)
+- Python `3.10` or higher (including the `3.14t` free-threaded build)
 - FastAPI `>=0.112.4,<1.0.0`
 
 > `fastapi-injectable` resolves dependencies through FastAPI's internal
